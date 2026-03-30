@@ -6,10 +6,7 @@ import json
 
 WORKING_DIR = os.getcwd()
 
-SYSTEM = f"""You are a coding agent at {WORKING_DIR}.
- Use todo_manager to manage your tasks.
- Mark in_progress before starting, completed when done.
- Prefer tools over prose."""
+SYSTEM = f"""You are a coding agent at {WORKING_DIR}. Use the task tool to delegate exploration or subtasks."""
 
 
 def agent_loop(messages):
@@ -27,7 +24,7 @@ def agent_loop(messages):
         log_message(msg)
 
         # append the assistant message to the conversation, including any tool calls or refusals
-        messages.append(extract_assistant_message(msg))
+        messages.append({"role": msg.role, "content": msg.content})
 
         if choice.finish_reason != "tool_calls":
             break
@@ -43,30 +40,3 @@ def agent_loop(messages):
                     "content": result,
                 }
             )
-
-
-def extract_assistant_message(msg) -> dict:
-    assistant_message = {
-        "role": "assistant",
-    }
-
-    if msg.content is not None:
-        assistant_message["content"] = msg.content
-
-    if msg.refusal is not None:
-        assistant_message["refusal"] = msg.refusal
-
-    if msg.tool_calls is not None:
-        assistant_message["tool_calls"] = [
-            {
-                "id": tc.id,
-                "type": tc.type,
-                "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments,
-                },
-            }
-            for tc in msg.tool_calls
-        ]
-
-    return assistant_message
