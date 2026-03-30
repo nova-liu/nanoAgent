@@ -1,135 +1,258 @@
-"""
-chat.completions response logging helpers
-=========================================
-Usage:
-    from log import log_response, log_stream
+"""Structured logging helpers for chat.completions responses.
 
-    response = client.chat.completions.create(...)
-    log_response(response)
-
-    stream = client.chat.completions.create(stream=True, ...)
-    log_stream(stream)    # Print deltas while collecting the full text.
+The module keeps existing function names so callers do not need to change code.
+It uses ``logging`` and upgrades output with ``rich`` when available.
 """
+
+from __future__ import annotations
 
 import json
+import logging
+from typing import Any, Iterable
 
-# ── full response ─────────────────────────────────────
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.table import Table
 
-
-def log_response(response, verbose=False):
-    """Print a completions response with text, tool calls, and refusals."""
-    print(f"model={response.model}  id={response.id}")
-    log_usage(response)
-
-    for i, choice in enumerate(response.choices):
-        prefix = f"[choice {i}] " if len(response.choices) > 1 else ""
-        print(f"{prefix}finish_reason={choice.finish_reason}")
-        log_message(choice.message)
-
-    if verbose:
-        log_raw(response)
-    print()
+LOGGER_NAME = "agent.log"
+_console = Console()
 
 
-# ── message ───────────────────────────────────────────
+def _get_logger() -> logging.Logger:
+    logger = logging.getLogger(LOGGER_NAME)
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    handler = RichHandler(
+        show_time=False, show_path=False, markup=True, rich_tracebacks=True
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+
+    logger.addHandler(handler)
+    return logger
 
 
-def log_message(msg):
-    """Print the full contents of a single ChatCompletionMessage."""
-    # Text response.
-    if msg.content:
-        print(f"[assistant] {msg.content}")
+def _pretty_json(text: str) -> str:
+    try:
+        return json.dumps(json.loads(text), ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        return text
 
-    # Refusal.
-    if msg.refusal:
-        print(f"[refusal] {msg.refusal}")
 
-    # Tool calls.
-    if msg.tool_calls:
-        log_tool_calls(msg.tool_calls)
+def _truncate(text: str, limit: int = 240) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "..."
 
-    # Annotations such as web search citations.
+
+def _extract_tool_call_names(tool_calls: Any) -> str:
+    names: list[str] = []
+    if not isinstance(tool_calls, list):
+        return ""
+
+    for tc in tool_calls:
+        # dict-style tool calls from request payload history
+        if isinstance(tc, dict):
+            fn = tc.get("function")
+            if isinstance(fn, dict) and fn.get("name"):
+                names.append(str(fn["name"]))
+            elif tc.get("name"):
+                names.append(str(tc["name"]))
+            else:
+                names.append("unknown")
+        else:
+            # model objects
+            fn = getattr(tc, "function", None)
+            names.append(getattr(fn, "name", "unknown"))
+
+    if not names:
+        return ""
+    return ", ".join(names)
+
+
+def _message_preview(msg: dict[str, Any]) -> str:
+    parts: list[str] = []
+
+    content = msg.get("content")
+    if isinstance(content, str) and content:
+        parts.append(content)
+    elif isinstance(content, list) and content:
+        parts.append(f"[content_parts={len(content)}]")
+
+    refusal = msg.get("refusal")
+    if isinstance(refusal, str) and refusal:
+        parts.append(f"[refusal] {refusal}")
+
+    tool_calls = msg.get("tool_calls")
+    if tool_calls:
+        names = _extract_tool_call_names(tool_calls)
+        if names:
+            parts.append(f"[tool_calls] {names}")
+        else:
+            parts.append("[tool_calls]")
+
+    # tool result message shape
+    if msg.get("role") == "tool" and isinstance(content, str) and content:
+        parts.append(f"[tool_result] {content}")
+
+    # responses-style function_call_output shape (if mixed into history)
+    if msg.get("type") == "function_call_output":
+        output = msg.get("output")
+        if output is not None:
+            parts.append(f"[function_call_output] {output}")
+
+    if not parts:
+        parts.append("<no previewable fields>")
+
+    return _truncate(" | ".join(parts), 240)
+
+
+def log_input(messages: Iterable[dict[str, Any]]) -> None:
+    """Log input messages grouped by role before sending a request."""
+    logger = _get_logger()
+    messages = list(messages)
+
+    table = Table(title="Input Messages", show_header=True, header_style="bold cyan")
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Role", width=12)
+    table.add_column("Preview", overflow="fold")
+
+    for i, msg in enumerate(messages):
+        role = str(msg.get("role", "unknown"))
+        preview = _message_preview(msg)
+        table.add_row(str(i), role, preview)
+
+    _console.print(Panel(table, border_style="cyan", title="USER INPUT / CONTEXT"))
+
+
+def log_message(msg: Any) -> None:
+    """Log one assistant message with separate sections by response type."""
+    logger = _get_logger()
+
+    content = getattr(msg, "content", None)
+    refusal = getattr(msg, "refusal", None)
+    tool_calls = getattr(msg, "tool_calls", None)
     annotations = getattr(msg, "annotations", None)
+    audio = getattr(msg, "audio", None)
+
+    if content:
+        _console.print(Panel(str(content), title="MODEL: TEXT", border_style="green"))
+
+    if refusal:
+        _console.print(Panel(str(refusal), title="MODEL: REFUSAL", border_style="red"))
+
+    if tool_calls:
+        table = Table(show_header=True, header_style="bold yellow")
+        table.add_column("#", style="dim", width=4)
+        table.add_column("call_id", overflow="fold")
+        table.add_column("name", style="yellow")
+        table.add_column("arguments", overflow="fold")
+        for i, tc in enumerate(tool_calls):
+            fn = tc.function
+            table.add_row(str(i), str(tc.id), str(fn.name), _pretty_json(fn.arguments))
+        _console.print(Panel(table, title="MODEL: TOOL CALLS", border_style="yellow"))
+
     if annotations:
         log_annotations(annotations)
 
-    # Audio payload.
-    audio = getattr(msg, "audio", None)
     if audio:
         log_audio(audio)
 
 
-# ── tool calls ────────────────────────────────────────
-
-
-def log_tool_calls(tool_calls):
+def log_tool_calls(tool_calls: Iterable[Any]) -> None:
+    """Log parsed tool calls from a chat completion message."""
+    logger = _get_logger()
     for i, tc in enumerate(tool_calls):
         fn = tc.function
-        try:
-            args = json.loads(fn.arguments)
-            args_str = json.dumps(args, ensure_ascii=False)
-        except (json.JSONDecodeError, TypeError):
-            args_str = fn.arguments
-        print(f"  [tool_call {i}] id={tc.id}  {fn.name}({args_str})")
+        logger.info(
+            "MODEL: TOOL_CALL[%s] id=%s %s(%s)",
+            i,
+            tc.id,
+            fn.name,
+            _pretty_json(fn.arguments),
+        )
 
 
-# ── usage ─────────────────────────────────────────────
-
-
-def log_usage(response):
-    """Print token usage, including prompt cache and reasoning details."""
-    usage = response.usage
+def log_usage(response: Any) -> None:
+    """Log token usage for a full response object."""
+    logger = _get_logger()
+    usage = getattr(response, "usage", None)
     if not usage:
         return
+
     parts = [
         f"prompt={usage.prompt_tokens}",
         f"completion={usage.completion_tokens}",
         f"total={usage.total_tokens}",
     ]
-    # Prompt details.
+
     pd = getattr(usage, "prompt_tokens_details", None)
     if pd:
         cached = getattr(pd, "cached_tokens", None)
         if cached:
             parts.append(f"cached={cached}")
-    # Completion details.
+
     cd = getattr(usage, "completion_tokens_details", None)
     if cd:
         reasoning = getattr(cd, "reasoning_tokens", None)
         if reasoning:
             parts.append(f"reasoning={reasoning}")
-    print(f"tokens: {', '.join(parts)}")
+
+    logger.info("USAGE: %s", ", ".join(parts))
 
 
-# ── streaming ─────────────────────────────────────────
+def log_response(response: Any, verbose: bool = False) -> None:
+    """Log one full chat.completions response object."""
+    logger = _get_logger()
+    logger.info(
+        "RESPONSE: model=%s id=%s choices=%s",
+        response.model,
+        response.id,
+        len(response.choices),
+    )
+    log_usage(response)
+
+    for i, choice in enumerate(response.choices):
+        logger.info("CHOICE[%s]: finish_reason=%s", i, choice.finish_reason)
+        log_message(choice.message)
+
+    if verbose:
+        log_raw(response)
 
 
-def log_stream(stream):
-    """Print text deltas chunk by chunk and summarize streamed tool calls."""
-    full_text = []
-    tool_calls_buf = {}  # index -> {id, name, arguments}
+def log_stream(stream: Iterable[Any]) -> str:
+    """Log streaming deltas and return the merged text."""
+    logger = _get_logger()
+    full_text: list[str] = []
+    refusal_text: list[str] = []
+    tool_calls_buf: dict[int, dict[str, str]] = {}
     finish_reason = None
     model = None
 
     for chunk in stream:
-        model = model or chunk.model
-        if not chunk.choices:
-            # The final chunk may contain usage only.
-            if chunk.usage:
-                _print_usage_obj(chunk.usage)
+        model = model or getattr(chunk, "model", None)
+        choices = getattr(chunk, "choices", None) or []
+        if not choices:
+            usage = getattr(chunk, "usage", None)
+            if usage:
+                _print_usage_obj(usage)
             continue
 
-        delta = chunk.choices[0].delta
-        fr = chunk.choices[0].finish_reason
+        delta = choices[0].delta
+        fr = choices[0].finish_reason
         if fr:
             finish_reason = fr
 
-        # Text delta.
         if delta.content:
-            print(delta.content, end="", flush=True)
             full_text.append(delta.content)
 
-        # Tool call delta.
+        if delta.refusal:
+            refusal_text.append(delta.refusal)
+
         if delta.tool_calls:
             for tc_delta in delta.tool_calls:
                 idx = tc_delta.index
@@ -144,67 +267,73 @@ def log_stream(stream):
                     if tc_delta.function.arguments:
                         buf["arguments"] += tc_delta.function.arguments
 
-    # End the streamed text line.
-    if full_text:
-        print()
+    text = "".join(full_text)
+    refusal = "".join(refusal_text)
+    if text:
+        _console.print(Panel(text, title="MODEL: STREAM TEXT", border_style="green"))
 
-    # Summarize tool calls.
+    if refusal:
+        _console.print(
+            Panel(refusal, title="MODEL: STREAM REFUSAL", border_style="red")
+        )
+
     if tool_calls_buf:
-        print(f"finish_reason={finish_reason}  model={model}")
+        logger.info("STREAM SUMMARY: finish_reason=%s model=%s", finish_reason, model)
         for idx in sorted(tool_calls_buf):
             tc = tool_calls_buf[idx]
-            try:
-                args = json.dumps(json.loads(tc["arguments"]), ensure_ascii=False)
-            except (json.JSONDecodeError, TypeError):
-                args = tc["arguments"]
-            print(f"  [tool_call {idx}] id={tc['id']}  {tc['name']}({args})")
+            logger.info(
+                "STREAM TOOL_CALL[%s]: id=%s %s(%s)",
+                idx,
+                tc["id"],
+                tc["name"],
+                _pretty_json(tc["arguments"]),
+            )
     elif finish_reason:
-        print(f"finish_reason={finish_reason}  model={model}")
+        logger.info("STREAM SUMMARY: finish_reason=%s model=%s", finish_reason, model)
 
-    return "".join(full_text)
-
-
-def _print_usage_obj(usage):
-    parts = [
-        f"prompt={usage.prompt_tokens}",
-        f"completion={usage.completion_tokens}",
-        f"total={usage.total_tokens}",
-    ]
-    print(f"tokens: {', '.join(parts)}")
+    return text
 
 
-# ── annotations ───────────────────────────────────────
+def _print_usage_obj(usage: Any) -> None:
+    logger = _get_logger()
+    logger.info(
+        "USAGE: prompt=%s, completion=%s, total=%s",
+        usage.prompt_tokens,
+        usage.completion_tokens,
+        usage.total_tokens,
+    )
 
 
-def log_annotations(annotations):
-    """Print web search citation annotations."""
+def log_annotations(annotations: Iterable[Any]) -> None:
+    """Log message annotations, including URL citations."""
+    logger = _get_logger()
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("type", width=16)
+    table.add_column("details", overflow="fold")
+
     for ann in annotations:
         ann_type = getattr(ann, "type", "unknown")
         if ann_type == "url_citation":
-            print(f"  [citation] {ann.url_citation.title} — {ann.url_citation.url}")
+            table.add_row(
+                "url_citation", f"{ann.url_citation.title} -> {ann.url_citation.url}"
+            )
         else:
-            print(f"  [annotation] type={ann_type}")
+            table.add_row(str(ann_type), "-")
+    _console.print(Panel(table, title="MODEL: ANNOTATIONS", border_style="magenta"))
 
 
-# ── audio ─────────────────────────────────────────────
+def log_audio(audio: Any) -> None:
+    """Log a short audio response summary."""
+    logger = _get_logger()
+    transcript = getattr(audio, "transcript", "")
+    preview = (transcript[:120] + "...") if len(transcript) > 120 else transcript
+    logger.info("MODEL: AUDIO id=%s transcript=%s", getattr(audio, "id", ""), preview)
 
 
-def log_audio(audio):
-    """Print a short summary of the audio response."""
-    print(f"  [audio] id={audio.id}  transcript={audio.transcript[:80]}...")
-
-
-# ── raw dump ──────────────────────────────────────────
-
-
-def log_raw(response):
-    """Print the full raw JSON response for debugging."""
-    print("--- raw response ---")
-    print(json.dumps(response.model_dump(), indent=2, ensure_ascii=False, default=str))
-
-
-def log_input(messages):
-    for i, msg in enumerate(messages):
-        print(
-            f"[message {i}] role={msg['role']} content={msg.get('content', '')[:80]}..."
-        )
+def log_raw(response: Any) -> None:
+    """Log a full raw JSON dump for debugging."""
+    logger = _get_logger()
+    logger.info(
+        "RAW RESPONSE JSON\n%s",
+        json.dumps(response.model_dump(), indent=2, ensure_ascii=False, default=str),
+    )

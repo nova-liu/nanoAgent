@@ -1,6 +1,6 @@
 from client import client
 from tool_calls import TOOLS, run_tool
-from log import log_message, log_usage, log_input
+from log import log_message, log_input
 import os
 import json
 
@@ -8,8 +8,6 @@ SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act
 
 
 def agent_loop(messages):
-    messages = [{"role": "system", "content": SYSTEM}] + messages
-
     while True:
         log_input(messages)
         response = client.chat.completions.create(
@@ -19,15 +17,17 @@ def agent_loop(messages):
             max_tokens=8000,
             n=1,
         )
-        log_usage(response)
         choice = response.choices[0]
         msg = choice.message
         log_message(msg)
+
+        # append the assistant message to the conversation, including any tool calls or refusals
         messages.append(extract_assistant_message(msg))
 
         if choice.finish_reason != "tool_calls":
             break
 
+        # need to run the tool calls and append the results to the conversation before the next turn
         for tc in msg.tool_calls:
             args = json.loads(tc.function.arguments)
             result = run_tool(tc.function.name, args)
@@ -51,7 +51,7 @@ def extract_assistant_message(msg) -> dict:
     if msg.refusal is not None:
         assistant_message["refusal"] = msg.refusal
 
-    if msg.tool_calls:
+    if msg.tool_calls is not None:
         assistant_message["tool_calls"] = [
             {
                 "id": tc.id,
