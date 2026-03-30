@@ -1,6 +1,5 @@
 from agent_loop import agent_loop
 
-
 if __name__ == "__main__":
     history = []
 
@@ -15,5 +14,3 @@ if __name__ == "__main__":
         agent_loop(history)
         response_content = history[-1]["content"]
         print(f"Agent: {response_content}\n")
-
-

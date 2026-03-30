@@ -13,7 +13,6 @@ Usage:
 
 import json
 
-
 # ── full response ─────────────────────────────────────
 
 
@@ -206,4 +205,6 @@ def log_raw(response):
 
 def log_input(messages):
     for i, msg in enumerate(messages):
-        print(f"[message {i}] role={msg['role']} content={msg.get('content', '')[:80]}...")
+        print(
+            f"[message {i}] role={msg['role']} content={msg.get('content', '')[:80]}..."
+        )
