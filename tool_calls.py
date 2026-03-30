@@ -78,7 +78,7 @@ def run_tool(name: str, args: dict) -> str:
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
-        return "Error: Dangerous command blocked"
+        raise Exception("Error: Dangerous command blocked")
     try:
         r = subprocess.run(
             command,
@@ -90,18 +90,18 @@ def run_bash(command: str) -> str:
         )
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(no output)"
-    except subprocess.TimeoutExpired:
-        return "Error: Timeout (120s)"
+    except subprocess.TimeoutExpired as e:
+        raise Exception(f"Error: Command timed out: {str(e)}")
 
 
 def read_file(filename: str) -> str:
     if not os.path.isfile(filename):
-        return f"Error: File '{filename}' does not exist."
+        raise Exception(f"Error: File '{filename}' does not exist.")
     try:
         with open(filename, "r") as f:
             return f.read()
     except Exception as e:
-        return f"Error reading file '{filename}': {str(e)}"
+        raise Exception(f"Error reading file '{filename}': {str(e)}")
 
 
 def write_file(filename: str, content: str) -> str:
@@ -110,20 +110,20 @@ def write_file(filename: str, content: str) -> str:
             f.write(content)
         return f"File '{filename}' written successfully."
     except Exception as e:
-        return f"Error writing file '{filename}': {str(e)}"
+        raise Exception(f"Error writing file '{filename}': {str(e)}")
 
 
 def edit_file(filename: str, old_content: str, new_content: str) -> str:
     if not os.path.isfile(filename):
-        return f"Error: File '{filename}' does not exist."
+        raise Exception(f"Error: File '{filename}' does not exist.")
     try:
         with open(filename, "r") as f:
             content = f.read()
         if old_content not in content:
-            return f"Error: Old content not found in '{filename}'."
+            raise Exception(f"Error: Old content not found in '{filename}'.")
         updated_content = content.replace(old_content, new_content)
         with open(filename, "w") as f:
             f.write(updated_content)
         return f"File '{filename}' edited successfully."
     except Exception as e:
-        return f"Error editing file '{filename}': {str(e)}"
+        raise Exception(f"Error editing file '{filename}': {str(e)}")

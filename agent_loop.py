@@ -4,7 +4,9 @@ from log import log_message, log_input
 import os
 import json
 
-SYSTEM = f"""You are a coding agent at {os.getcwd()}.
+WORKING_DIR = os.getcwd()
+
+SYSTEM = f"""You are a coding agent at {WORKING_DIR}.
  Use todo_manager to manage your tasks.
  Mark in_progress before starting, completed when done.
  Prefer tools over prose."""
@@ -66,4 +68,5 @@ def extract_assistant_message(msg) -> dict:
             }
             for tc in msg.tool_calls
         ]
+
     return assistant_message
