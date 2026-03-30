@@ -1,4 +1,5 @@
 import subprocess, os
+from todomanager import todo_manager_tool, tm
 
 TOOLS = [
     {
@@ -56,6 +57,7 @@ TOOLS = [
             },
         },
     },
+    todo_manager_tool,
 ]
 
 
@@ -68,6 +70,8 @@ def run_tool(name: str, args: dict) -> str:
         return write_file(args["filename"], args["content"])
     elif name == "edit_file":
         return edit_file(args["filename"], args["old_content"], args["new_content"])
+    elif name == "todo_manager":
+        return tm.update(args["items"])
     return f"unknown tool: {name}"
 
 

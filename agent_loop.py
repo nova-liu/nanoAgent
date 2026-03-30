@@ -4,7 +4,10 @@ from log import log_message, log_input
 import os
 import json
 
-SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act, don't explain."
+SYSTEM = f"""You are a coding agent at {os.getcwd()}.
+ Use todo_manager to manage your tasks.
+ Mark in_progress before starting, completed when done.
+ Prefer tools over prose."""
 
 
 def agent_loop(messages):
