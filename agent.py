@@ -1,6 +1,5 @@
 from client import client
 from tool_calls import tools
-from log import log_message, log_input
 import os
 import json
 
@@ -20,6 +19,7 @@ class Agent:
         tools=tools,
         client=client,
         sub_agent=None,
+        name="mainAgent",
     ):
         self.model = model
         self.tools = tools
@@ -28,16 +28,15 @@ class Agent:
         self.messages = [{"role": "system", "content": system}]
         self.client = client
         self.sub_agent = sub_agent
+        self.name = name
 
     def run_loop(self):
         while True:
-            log_input(self.messages)
+            self.log_messages()
             response = self.call_llm()
-
+            self.log_response(response)
             choice = response.choices[0]
             msg = choice.message
-            log_message(msg)
-
             # append the assistant message to the conversation, including any tool calls or refusals
             self.append_assistant_message(msg.content)
 
@@ -99,7 +98,21 @@ class Agent:
     def re_init_messages(self, system):
         self.messages = [{"role": "system", "content": system}]
 
-subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client)
+    def log_messages(self):
+        print(f"--- Conversation with {self.name} ---")
+        for msg in self.messages:
+            print(f"{msg['role']}: {msg.get('content', '')}")
+        print(f"--- End of conversation with {self.name} ---\n")
+
+    def log_response(self, response):
+        print(f"Response from {self.name}: {response}\n")
+
+
+subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client, name="subAgent")
 mainAgent = Agent(
-    system=MAIN_AGENT_SYSTEM, tools=tools, client=client, sub_agent=subAgent
+    system=MAIN_AGENT_SYSTEM,
+    tools=tools,
+    client=client,
+    sub_agent=subAgent,
+    name="mainAgent",
 )
