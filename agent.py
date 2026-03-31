@@ -3,6 +3,7 @@ from tool import tools
 from skill import skill
 import os
 import json
+from log import logger
 
 WORKDIR = os.getcwd()
 
@@ -32,6 +33,7 @@ class Agent:
         client=client,
         sub_agent=None,
         name="mainAgent",
+        logger=logger,
     ):
         self.model = model
         self.tools = tools
@@ -41,6 +43,7 @@ class Agent:
         self.client = client
         self.sub_agent = sub_agent
         self.name = name
+        self.logger = logger
 
     def run_loop(self):
         while True:
@@ -111,13 +114,10 @@ class Agent:
         self.messages = [{"role": "system", "content": system}]
 
     def log_messages(self):
-        print(f"--- Conversation with {self.name} ---")
-        for msg in self.messages:
-            print(f"{msg['role']}: {msg.get('content', '')}")
-        print(f"--- End of conversation with {self.name} ---\n")
+        self.logger.log_messages(self.name, self.messages)
 
     def log_response(self, response):
-        print(f"Response from {self.name}: {response}\n")
+        self.logger.log_response(self.name, response)
 
 
 subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client, name="subAgent")
