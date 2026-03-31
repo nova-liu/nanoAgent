@@ -1,5 +1,6 @@
 import subprocess, os
 from todo_manager import todo_manager_tool, tm
+from skill import skill_tool, skill
 
 task_tool = {
     "type": "function",
@@ -74,6 +75,7 @@ TOOLS = [
     },
     todo_manager_tool,
     task_tool,
+    skill_tool,
 ]
 
 
@@ -94,6 +96,8 @@ class Tool:
             return tm.update(args["items"])
         elif name == "task_tool":
             return sub_prompt(args["prompt"])
+        elif name == "get_skill":
+            return skill.get_content(args["name"])
         else:
             raise Exception(f"Unknown tool: {name}")
 

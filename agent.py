@@ -1,12 +1,24 @@
 from client import client
-from tool_calls import tools
+from tool import tools
+from skill import skill
 import os
 import json
 
 WORKDIR = os.getcwd()
 
-MAIN_AGENT_SYSTEM = f"""You are a coding agent at {WORKDIR}. Use the task tool to delegate exploration or subtasks."""
-SUB_AGENT_SYSTEM = f"""You are a coding agent at {WORKDIR}. You will be given a prompt from the main agent, and you should respond with a final answer."""
+MAIN_AGENT_SYSTEM = f"""
+You are a coding agent at {WORKDIR}.
+Use load_skill to access specialized knowledge before tackling unfamiliar topics.
+Skills available:
+{skill.get_descriptions()}.
+Use the task tool to delegate exploration or subtasks."""
+
+SUB_AGENT_SYSTEM = f"""You are a coding agent at {WORKDIR}.
+You will be given a prompt from the main agent, and you should respond with a final answer.
+Use load_skill to access specialized knowledge before tackling unfamiliar topics.
+Skills available:
+{skill.get_descriptions()}.
+"""
 
 
 class Agent:
