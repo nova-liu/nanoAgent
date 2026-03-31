@@ -1,16 +1,14 @@
-from agent_loop import agent_loop, SYSTEM
+from agent import mainAgent
 
 if __name__ == "__main__":
-    messages = [{"role": "system", "content": SYSTEM}]
-
     while True:
         user_input = input("User: ")
-        messages.append({"role": "user", "content": user_input})
+        mainAgent.append_user_message(user_input)
 
         if user_input.lower() in ["exit", "quit"]:
             print("Exiting...")
             break
 
-        agent_loop(messages)
-        response_content = messages[-1]["content"]
-        print(f"Agent: {response_content}\n")
+        mainAgent.run_loop()
+
+        print(f"Agent: {mainAgent.final_response()}\n")
