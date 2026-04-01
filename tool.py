@@ -17,6 +17,18 @@ task_tool = {
     },
 }
 
+compact_tool = {
+    "type": "function",
+    "function": {
+        "name": "compact",
+        "description": "Compact the conversation history to reduce token usage. This can be done by summarizing earlier messages or removing less relevant ones.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+}
+
 TOOLS = [
     {
         "type": "function",
@@ -76,6 +88,7 @@ TOOLS = [
     todo_manager_tool,
     task_tool,
     skill_tool,
+    compact_tool,
 ]
 
 
@@ -98,11 +111,17 @@ class Tool:
             return sub_prompt(args["prompt"])
         elif name == "get_skill":
             return skill.get_content(args["name"])
+        elif name == "compact":
+            return compact()
         else:
             raise Exception(f"Unknown tool: {name}")
 
 
 tools = Tool()
+
+def compact():
+    # This is a placeholder for the actual compaction logic, which could involve summarizing or pruning messages.
+    return "Conversation history compacted to reduce token usage."
 
 
 def run_bash(command: str) -> str:

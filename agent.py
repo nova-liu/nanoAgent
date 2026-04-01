@@ -184,6 +184,10 @@ class Agent:
                 self.append_tool_response(tc.id, sub_result)
                 self.sub_agent.re_init_messages(SUB_AGENT_SYSTEM)
                 continue
+            
+            if tc.function.name == "compact":
+                self.auto_compact()
+                continue
 
             args = json.loads(tc.function.arguments)
             result = self.use_tool(tc.function.name, args)
