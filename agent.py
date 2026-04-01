@@ -59,29 +59,16 @@ class Agent:
             self.log_messages()
             response = self.call_llm(self.messages)
             self.log_response(response)
-            choice = response.choices[0]
-            msg = choice.message
+
+            msg = response.choices[0].message
             # append the assistant message to the conversation, including any tool calls or refusals
             self.append_assistant_message(msg.content)
 
-            if choice.finish_reason != "tool_calls":
+            if self.stop_loop(response):
                 break
 
             # need to run the tool calls and append the results to the conversation before the next turn
-            for tc in msg.tool_calls:
-                if tc.function.name == "task_tool" and self.sub_agent:
-                    args = json.loads(tc.function.arguments)
-                    prompt = args["prompt"]
-                    self.sub_agent.append_user_message(prompt)
-                    self.sub_agent.run_loop()
-                    sub_result = self.sub_agent.final_response()
-                    self.append_tool_response(tc.id, sub_result)
-                    self.sub_agent.re_init_messages(SUB_AGENT_SYSTEM)
-                    continue
-
-                args = json.loads(tc.function.arguments)
-                result = self.use_tool(tc.function.name, args)
-                self.append_tool_response(tc.id, result)
+            self.handle_tool_calls(msg)
 
     def final_response(self) -> str:
         return self.messages[-1]["content"] if self.messages else ""
@@ -180,6 +167,27 @@ class Agent:
     def estimate_tokens(self) -> int:
         """Rough token count: ~4 chars per token."""
         return len(str(self.messages)) // 4
+
+    def stop_loop(self, response) -> bool:
+        if response.choices[0].finish_reason != "tool_calls":
+            return True
+        return False
+
+    def handle_tool_calls(self, msg):
+        for tc in msg.tool_calls:
+            if tc.function.name == "task_tool" and self.sub_agent:
+                args = json.loads(tc.function.arguments)
+                prompt = args["prompt"]
+                self.sub_agent.append_user_message(prompt)
+                self.sub_agent.run_loop()
+                sub_result = self.sub_agent.final_response()
+                self.append_tool_response(tc.id, sub_result)
+                self.sub_agent.re_init_messages(SUB_AGENT_SYSTEM)
+                continue
+
+            args = json.loads(tc.function.arguments)
+            result = self.use_tool(tc.function.name, args)
+            self.append_tool_response(tc.id, result)
 
 
 subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client, name="subAgent")
