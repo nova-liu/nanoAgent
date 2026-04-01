@@ -1,11 +1,12 @@
 from client import client
 from tool import tools
 from skill import skill
-import os
+import time
 import json
 from log import logger
+from pathlib import Path
 
-WORKDIR = os.getcwd()
+WORKDIR = Path.cwd()
 
 MAIN_AGENT_SYSTEM = f"""
 You are a coding agent at {WORKDIR}.
@@ -21,6 +22,8 @@ Skills available:
 {skill.get_descriptions()}.
 """
 
+TRANSCRIPT_DIR = WORKDIR / ".transcripts"
+
 
 class Agent:
     def __init__(
@@ -34,6 +37,8 @@ class Agent:
         sub_agent=None,
         name="mainAgent",
         logger=logger,
+        transcript_dir=TRANSCRIPT_DIR,
+        max_context_tokens=1600,
     ):
         self.model = model
         self.tools = tools
@@ -44,11 +49,15 @@ class Agent:
         self.sub_agent = sub_agent
         self.name = name
         self.logger = logger
+        self.transcript_dir = transcript_dir
+        self.max_context_tokens = max_context_tokens
 
     def run_loop(self):
         while True:
+            if self.estimate_tokens() > self.max_context_tokens:
+                self.auto_compact()
             self.log_messages()
-            response = self.call_llm()
+            response = self.call_llm(self.messages)
             self.log_response(response)
             choice = response.choices[0]
             msg = choice.message
@@ -87,10 +96,12 @@ class Agent:
         except Exception as e:
             return f"Error using tool '{name}': {str(e)}"
 
-    def call_llm(self):
+    def call_llm(self, messages=None):
+        if messages is None:
+            return
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=self.messages,
+            messages=messages,
             tools=self.tools.tools,
             max_tokens=self.max_tokens,
             n=self.n,
@@ -105,6 +116,7 @@ class Agent:
                 "content": content,
             }
         )
+        self.compact_tool_result()
 
     def append_assistant_message(self, content: str):
         if content:
@@ -118,6 +130,56 @@ class Agent:
 
     def log_response(self, response):
         self.logger.log_response(self.name, response)
+
+    def compact_tool_result(self):
+        tool_indexes = [
+            idx for idx, msg in enumerate(self.messages) if msg.get("role") == "tool"
+        ]
+        if len(tool_indexes) <= 3:
+            return
+
+        drop_indexes = set(tool_indexes[:-3])
+        self.messages = [
+            msg for idx, msg in enumerate(self.messages) if idx not in drop_indexes
+        ]
+
+    def auto_compact(self):
+        self.transcript_dir.mkdir(exist_ok=True)
+        transcript_path = self.transcript_dir / f"transcript_{int(time.time())}.jsonl"
+        with open(transcript_path, "w") as f:
+            for msg in self.messages:
+                f.write(json.dumps(msg, default=str) + "\n")
+        print(f"[transcript saved: {transcript_path}]")
+        # Ask LLM to summarize
+        conversation_text = json.dumps(self.messages, default=str)[:80000]
+        response = self.call_llm(
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Summarize this conversation for continuity. Include: "
+                    "1) What was accomplished, 2) Current state, 3) Key decisions made. "
+                    "Be concise but preserve critical details.\n\n" + conversation_text,
+                }
+            ],
+        )
+        summary = response.choices[0].message.content
+        # Replace all messages with compressed summary
+        self.messages = [
+            {"role": "system", "content": self.messages[0]["content"]},
+            {
+                "role": "user",
+                "content": f"[Conversation compressed. Transcript: {transcript_path}]\n\n{summary}",
+            },
+            {
+                "role": "assistant",
+                "content": "Understood. I have the context from the summary. Continuing.",
+            },
+        ]
+        return
+
+    def estimate_tokens(self) -> int:
+        """Rough token count: ~4 chars per token."""
+        return len(str(self.messages)) // 4
 
 
 subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client, name="subAgent")
