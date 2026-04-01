@@ -1,6 +1,13 @@
 import subprocess, os
 from todo_manager import todo_manager_tool, tm
 from skill import skill_tool, skill
+from task_manager import (
+    create_task_tool,
+    get_task_tool,
+    update_task_tool,
+    list_tasks_tool,
+    task_manager,
+)
 
 task_tool = {
     "type": "function",
@@ -89,6 +96,10 @@ TOOLS = [
     task_tool,
     skill_tool,
     compact_tool,
+    create_task_tool,
+    get_task_tool,
+    update_task_tool,
+    list_tasks_tool,
 ]
 
 
@@ -113,11 +124,25 @@ class Tool:
             return skill.get_content(args["name"])
         elif name == "compact":
             return compact()
+        elif name == "create_task":
+            return task_manager.create(args["subject"], args["description"])
+        elif name == "get_task":
+            return task_manager.get(args["id"])
+        elif name == "update_task":
+            return task_manager.update(
+                args["id"],
+                args.get("status"),
+                args.get("add_blocked_by"),
+                args.get("add_blocks"),
+            )
+        elif name == "list_tasks":
+            return task_manager.list_all()
         else:
             raise Exception(f"Unknown tool: {name}")
 
 
 tools = Tool()
+
 
 def compact():
     # This is a placeholder for the actual compaction logic, which could involve summarizing or pruning messages.
