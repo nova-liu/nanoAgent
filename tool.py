@@ -8,6 +8,7 @@ from task_manager import (
     list_tasks_tool,
     task_manager,
 )
+from background_manager import background_run_tool, check_background_tool, BG
 
 task_tool = {
     "type": "function",
@@ -100,6 +101,8 @@ TOOLS = [
     get_task_tool,
     update_task_tool,
     list_tasks_tool,
+    background_run_tool,
+    check_background_tool,
 ]
 
 
@@ -137,6 +140,10 @@ class Tool:
             )
         elif name == "list_tasks":
             return task_manager.list_all()
+        elif name == "background_run":
+            return BG.run(args["command"])
+        elif name == "check_background":
+            return BG.check(args.get("task_id"))
         else:
             raise Exception(f"Unknown tool: {name}")
 
