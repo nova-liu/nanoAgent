@@ -1,12 +1,10 @@
-from pathlib import Path
 import json
-
-WORKDIR = Path.cwd()
-TASKS_DIR = WORKDIR / ".tasks"
+from config import TASKS_DIR
+from pathlib import Path
 
 
 class TaskManager:
-    def __init__(self, task_dir: Path):
+    def __init__(self, task_dir: Path = TASKS_DIR):
         self.dir = task_dir
         self.dir.mkdir(exist_ok=True)
         self._next_id = self._max_id() + 1

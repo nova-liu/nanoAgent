@@ -5,6 +5,7 @@ import os
 
 WORKDIR = os.getcwd()
 
+
 # -- BackgroundManager: threaded execution + notification queue --
 class BackgroundManager:
     def __init__(self, workdir=WORKDIR):
@@ -76,7 +77,7 @@ class BackgroundManager:
         return notifs
 
 
-BG = BackgroundManager()
+background_manager = BackgroundManager()
 
 background_run_tool = {
     "type": "function",

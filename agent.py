@@ -6,7 +6,7 @@ import json
 from log import logger
 from pathlib import Path
 
-WORKDIR = Path.cwd()
+from config import WORKDIR, TRANSCRIPT_DIR
 
 MAIN_AGENT_SYSTEM = f"""
 You are a coding agent at {WORKDIR}.
@@ -22,13 +22,11 @@ Skills available:
 {skill.get_descriptions()}.
 """
 
-TRANSCRIPT_DIR = WORKDIR / ".transcripts"
-
 
 class Agent:
     def __init__(
         self,
-        model="doubao-seed-2-0-lite-260215",
+        model="doubao-seed-1-8-251228",
         max_tokens=8000,
         n=1,
         system=MAIN_AGENT_SYSTEM,
@@ -175,23 +173,47 @@ class Agent:
 
     def handle_tool_calls(self, msg):
         for tc in msg.tool_calls:
-            if tc.function.name == "task_tool" and self.sub_agent:
-                args = json.loads(tc.function.arguments)
-                prompt = args["prompt"]
-                self.sub_agent.append_user_message(prompt)
-                self.sub_agent.run_loop()
-                sub_result = self.sub_agent.final_response()
-                self.append_tool_response(tc.id, sub_result)
-                self.sub_agent.re_init_messages(SUB_AGENT_SYSTEM)
+            if self.delegate_by_agent(tc.function.name):
+                result = self.handle_delegation(
+                    tc.function.name, json.loads(tc.function.arguments)
+                )
+                self.append_tool_response(tc.id, result)
                 continue
-
-            if tc.function.name == "compact":
-                self.auto_compact()
-                continue
-
             args = json.loads(tc.function.arguments)
             result = self.use_tool(tc.function.name, args)
             self.append_tool_response(tc.id, result)
+
+    def clear_notifications(self):
+        notifs = self.tools.BG.drain_notifications()
+        if notifs and self.messages:
+            notif_text = "\n".join(
+                f"[bg:{n['task_id']}] {n['status']}: {n['result']}" for n in notifs
+            )
+            self.messages.append(
+                {
+                    "role": "user",
+                    "content": f"<background-results>\n{notif_text}\n</background-results>",
+                }
+            )
+
+    def delegate_by_agent(self, tool_name: str) -> bool:
+        if tool_name in ["sub_agent_tool", "compact"]:
+            return True
+        return False
+
+    def handle_delegation(self, tool_name: str, args: dict) -> str:
+        if tool_name == "sub_agent_tool" and self.sub_agent:
+            prompt = args["prompt"]
+            self.sub_agent.append_user_message(prompt)
+            self.sub_agent.run_loop()
+            sub_result = self.sub_agent.final_response()
+            self.sub_agent.re_init_messages(SUB_AGENT_SYSTEM)
+            return sub_result
+        elif tool_name == "compact":
+            self.auto_compact()
+            return "Context compacted."
+        else:
+            return f"Unknown delegation for tool '{tool_name}'"
 
 
 subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client, name="subAgent")

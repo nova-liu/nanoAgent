@@ -1,5 +1,5 @@
 import subprocess, os
-from todo_manager import todo_manager_tool, tm
+from todo_manager import todo_manager_tool, todo_manager
 from skill import skill_tool, skill
 from task_manager import (
     create_task_tool,
@@ -8,12 +8,16 @@ from task_manager import (
     list_tasks_tool,
     task_manager,
 )
-from background_manager import background_run_tool, check_background_tool, BG
+from background_manager import (
+    background_run_tool,
+    check_background_tool,
+    background_manager,
+)
 
-task_tool = {
+sub_agent_tool = {
     "type": "function",
     "function": {
-        "name": "task_tool",
+        "name": "sub_agent_tool",
         "description": "Delegate a task to a sub-agent. The input is a prompt describing the task, and the output should be the final answer from the sub-agent after completing the task.",
         "parameters": {
             "type": "object",
@@ -37,64 +41,77 @@ compact_tool = {
     },
 }
 
+bash_tool = {
+    "type": "function",
+    "function": {
+        "name": "bash",
+        "description": "Run a bash command. Be cautious to avoid dangerous commands.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+            },
+            "required": ["command"],
+        },
+    },
+}
+
+write_file_tool = {
+    "type": "function",
+    "function": {
+        "name": "write_file",
+        "description": "Write content to a file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["filename", "content"],
+        },
+    },
+}
+
+read_file_tool = {
+    "type": "function",
+    "function": {
+        "name": "read_file",
+        "description": "Read content from a file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string"},
+            },
+            "required": ["filename"],
+        },
+    },
+}
+
+edit_file_tool = {
+    "type": "function",
+    "function": {
+        "name": "edit_file",
+        "description": "Edit content of a file by replacing old content with new content.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string"},
+                "old_content": {"type": "string"},
+                "new_content": {"type": "string"},
+            },
+            "required": ["filename", "old_content", "new_content"],
+        },
+    },
+}
+
+
 TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "bash",
-            "description": "Run a bash command.",
-            "parameters": {
-                "type": "object",
-                "properties": {"command": {"type": "string"}},
-                "required": ["command"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Write content to a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "filename": {"type": "string"},
-                    "content": {"type": "string"},
-                },
-                "required": ["filename", "content"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read content from a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {"filename": {"type": "string"}},
-                "required": ["filename"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "edit_file",
-            "description": "Edit content of a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "filename": {"type": "string"},
-                    "old_content": {"type": "string"},
-                    "new_content": {"type": "string"},
-                },
-                "required": ["filename", "old_content", "new_content"],
-            },
-        },
-    },
+    bash_tool,
+    read_file_tool,
+    write_file_tool,
+    edit_file_tool,
     todo_manager_tool,
-    task_tool,
+    sub_agent_tool,
     skill_tool,
     compact_tool,
     create_task_tool,
@@ -105,10 +122,23 @@ TOOLS = [
     check_background_tool,
 ]
 
+TOOL_HANDLERS = {t["function"]["name"]: t for t in TOOLS}
+
 
 class Tool:
-    def __init__(self, tools=TOOLS):
+    def __init__(
+        self,
+        tools=TOOLS,
+        background_manager=background_manager,
+        todo_manager=todo_manager,
+        task_manager=task_manager,
+        skill=skill,
+    ):
         self.tools = tools
+        self.background_manager = background_manager
+        self.todo_manager = todo_manager
+        self.task_manager = task_manager
+        self.skills = skill
 
     def dispatch(self, name, args) -> str:
         if name == "bash":
@@ -120,30 +150,30 @@ class Tool:
         elif name == "edit_file":
             return edit_file(args["filename"], args["old_content"], args["new_content"])
         elif name == "todo_manager":
-            return tm.update(args["items"])
-        elif name == "task_tool":
+            return self.todo_manager.update(args["items"])
+        elif name == "sub_agent_tool":
             return sub_prompt(args["prompt"])
         elif name == "get_skill":
-            return skill.get_content(args["name"])
+            return self.skills.get_content(args["name"])
         elif name == "compact":
             return compact()
         elif name == "create_task":
-            return task_manager.create(args["subject"], args["description"])
+            return self.task_manager.create(args["subject"], args["description"])
         elif name == "get_task":
-            return task_manager.get(args["id"])
+            return self.task_manager.get(args["id"])
         elif name == "update_task":
-            return task_manager.update(
+            return self.task_manager.update(
                 args["id"],
                 args.get("status"),
                 args.get("add_blocked_by"),
                 args.get("add_blocks"),
             )
         elif name == "list_tasks":
-            return task_manager.list_all()
+            return self.task_manager.list_all()
         elif name == "background_run":
-            return BG.run(args["command"])
+            return self.background_manager.run(args["command"])
         elif name == "check_background":
-            return BG.check(args.get("task_id"))
+            return self.background_manager.check(args.get("task_id"))
         else:
             raise Exception(f"Unknown tool: {name}")
 

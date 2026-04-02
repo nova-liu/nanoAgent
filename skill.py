@@ -1,11 +1,10 @@
 from pathlib import Path
 import re
-
-skill_dir = Path("./skills")
+from config import SKILL_DIR
 
 
 class Skill:
-    def __init__(self, skill_dir: Path):
+    def __init__(self, skill_dir: Path = SKILL_DIR):
         self.skill_dir = skill_dir
         self.skills = {}
         self._load_skills()
@@ -71,4 +70,4 @@ skill_tool = {
     },
 }
 
-skill = Skill(skill_dir)
+skill = Skill()
