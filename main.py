@@ -1,14 +1,17 @@
 from agent import mainAgent
+from message_bus import message_bus
+import threading
 
 if __name__ == "__main__":
+    # run main agent at background
+
+    threading.Thread(target=mainAgent.run_loop, daemon=True).start()
+
     while True:
         user_input = input("User: ")
-        mainAgent.append_user_message(user_input)
 
         if user_input.lower() in ["exit", "quit"]:
             print("Exiting...")
             break
 
-        mainAgent.run_loop()
-
-        print(f"Agent: {mainAgent.final_response()}\n")
+        message_bus.send("user", "mainAgent", user_input)

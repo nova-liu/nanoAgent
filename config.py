@@ -7,3 +7,5 @@ WORKDIR = Path.cwd()
 TRANSCRIPT_DIR = WORKDIR / ".transcripts"
 TASKS_DIR = WORKDIR / ".tasks"
 SKILL_DIR = WORKDIR / "skills"
+TEAM_DIR = WORKDIR / ".team"
+INBOX_DIR = TEAM_DIR / "inbox"

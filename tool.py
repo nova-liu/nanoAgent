@@ -14,6 +14,8 @@ from background_manager import (
     background_manager,
 )
 
+from message_bus import send_message_tool, read_inbox_tool, message_bus
+
 sub_agent_tool = {
     "type": "function",
     "function": {
@@ -104,6 +106,35 @@ edit_file_tool = {
     },
 }
 
+list_team_all_tool = {
+    "type": "function",
+    "function": {
+        "name": "list_team_all",
+        "description": "List all teammates with their roles and statuses.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+        "required": [],
+    },
+}
+
+spawn_tool = {
+    "type": "function",
+    "function": {
+        "name": "spawn",
+        "description": "Spawn a new agent with a given name and role.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "role": {"type": "string"},
+            },
+            "required": ["name", "role"],
+        },
+    },
+}
+
 
 TOOLS = [
     bash_tool,
@@ -120,6 +151,10 @@ TOOLS = [
     list_tasks_tool,
     background_run_tool,
     check_background_tool,
+    list_team_all_tool,
+    spawn_tool,
+    send_message_tool,
+    read_inbox_tool,
 ]
 
 TOOL_HANDLERS = {t["function"]["name"]: t for t in TOOLS}
@@ -133,12 +168,14 @@ class Tool:
         todo_manager=todo_manager,
         task_manager=task_manager,
         skill=skill,
+        message_bus=message_bus,
     ):
         self.tools = tools
         self.background_manager = background_manager
         self.todo_manager = todo_manager
         self.task_manager = task_manager
         self.skills = skill
+        self.message_bus = message_bus
 
     def dispatch(self, name, args) -> str:
         if name == "bash":
@@ -174,6 +211,16 @@ class Tool:
             return self.background_manager.run(args["command"])
         elif name == "check_background":
             return self.background_manager.check(args.get("task_id"))
+        elif name == "send_message":
+            return self.message_bus.send(
+                args["sender"],
+                args["to"],
+                args["content"],
+                args.get("msg_type", "message"),
+                args.get("extra"),
+            )
+        elif name == "read_inbox":
+            return self.message_bus.read_inbox(args["name"])
         else:
             raise Exception(f"Unknown tool: {name}")
 

@@ -1,0 +1,103 @@
+from pathlib import Path
+import json
+import time
+from config import INBOX_DIR
+
+VALID_MSG_TYPES = {
+    "message",
+    "shutdown",
+}
+
+
+# -- MessageBus: JSONL inbox per teammate --
+class MessageBus:
+    def __init__(self, inbox_dir: Path):
+        self.dir = inbox_dir
+        self.dir.mkdir(parents=True, exist_ok=True)
+
+    def send(
+        self,
+        sender: str,
+        to: str,
+        content: str,
+        msg_type: str = "message",
+        extra: dict = None,
+    ) -> str:
+        if msg_type not in VALID_MSG_TYPES:
+            return f"Error: Invalid type '{msg_type}'. Valid: {VALID_MSG_TYPES}"
+        msg = {
+            "type": msg_type,
+            "sender": sender,
+            "content": content,
+            "timestamp": time.time(),
+            "status": "unread",
+        }
+        if extra:
+            msg.update(extra)
+        inbox_path = self.dir / f"{to}.jsonl"
+        with open(inbox_path, "a") as f:
+            f.write(json.dumps(msg) + "\n")
+        return f"Sent {msg_type} to {to}"
+
+    def read_inbox(self, name: str) -> str:
+        inbox_path = self.dir / f"{name}.jsonl"
+        if not inbox_path.exists():
+            return ""
+        messages = []
+        for line in inbox_path.read_text().strip().splitlines():
+            if line:
+                ## only read messages that are unread, and mark them as read
+                msg = json.loads(line)
+                if msg.get("status") == "unread":
+                    msg["status"] = "read"
+                    messages.append(msg)
+        # rewrite the inbox with updated statuses
+        with open(inbox_path, "w") as f:
+            for msg in messages:
+                f.write(json.dumps(msg) + "\n")
+        if len(messages) == 0:
+            return ""
+        return json.dumps(messages)
+
+
+send_message_tool = {
+    "type": "function",
+    "function": {
+        "name": "send_message",
+        "description": "Send a message to another teammate.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "sender": {"type": "string", "description": "Sender teammate name"},
+                "to": {"type": "string", "description": "Recipient teammate name"},
+                "content": {"type": "string", "description": "Message content"},
+                "msg_type": {
+                    "type": "string",
+                    "description": f"Type of message, one of {VALID_MSG_TYPES}",
+                },
+                "extra": {
+                    "type": "object",
+                    "description": "Optional extra fields for the message",
+                },
+            },
+            "required": ["sender", "to", "content"],
+        },
+    },
+}
+
+read_inbox_tool = {
+    "type": "function",
+    "function": {
+        "name": "read_inbox",
+        "description": "Read and clear the inbox for a teammate.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Teammate name"},
+            },
+            "required": ["name"],
+        },
+    },
+}
+
+message_bus = MessageBus(INBOX_DIR)
