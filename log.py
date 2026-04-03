@@ -7,6 +7,8 @@ and token usage. Zero external dependencies (ANSI colors + box drawing).
 import json
 import os
 import sys
+import ast
+import re
 
 # ── ANSI helpers ────────────────────────────────────────────────────────────
 
@@ -80,8 +82,63 @@ def _bold_red(t: str) -> str:
 def _trunc(text: str, max_len: int = 200) -> str:
     if not text:
         return ""
-    text = str(text).strip().replace("\n", "\\n")
+    text = _to_log_text(text).strip().replace("\n", "\\n")
     return text if len(text) <= max_len else text[:max_len] + "…"
+
+
+def _decode_bytes(value: bytes) -> str:
+    for encoding in ("utf-8", "utf-16", "gbk", "latin-1"):
+        try:
+            return value.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return value.decode("utf-8", errors="replace")
+
+
+def _decode_python_bytes_literal(text: str):
+    stripped = text.strip()
+    if not re.fullmatch(r"[bB][rR]?([\"']).*\1", stripped, re.DOTALL):
+        return None
+    try:
+        literal = ast.literal_eval(stripped)
+    except (SyntaxError, ValueError):
+        return None
+    if isinstance(literal, bytes):
+        return _decode_bytes(literal)
+    return None
+
+
+def _decode_escaped_text(text: str) -> str:
+    if "\\x" not in text and "\\u" not in text and "\\n" not in text:
+        return text
+
+    try:
+        decoded = bytes(text, "utf-8").decode("unicode_escape")
+    except UnicodeDecodeError:
+        return text
+
+    # Keep the original if decoding would introduce control chars beyond whitespace.
+    if any(ord(ch) < 32 and ch not in "\n\r\t" for ch in decoded):
+        return text
+    return decoded
+
+
+def _to_log_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray)):
+        return _decode_bytes(bytes(value))
+    if isinstance(value, (dict, list, tuple)):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+
+    text = str(value)
+    decoded_literal = _decode_python_bytes_literal(text)
+    if decoded_literal is not None:
+        return decoded_literal
+    return _decode_escaped_text(text)
 
 
 _ROLE_ICON = {"system": "⚙️ ", "user": "👤", "assistant": "🤖", "tool": "🔧"}
@@ -152,7 +209,7 @@ class AgentLogger:
         name = tc.function.name
         try:
             args = json.loads(tc.function.arguments)
-            parts = [f"{k}={_trunc(str(v), 80)}" for k, v in args.items()]
+            parts = [f"{k}={_trunc(v, 80)}" for k, v in args.items()]
             args_str = ", ".join(parts)
         except (json.JSONDecodeError, AttributeError):
             args_str = _trunc(tc.function.arguments, 120)

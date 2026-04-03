@@ -30,7 +30,6 @@ class MessageBus:
             "sender": sender,
             "content": content,
             "timestamp": time.time(),
-            "status": "unread",
         }
         if extra:
             msg.update(extra)
@@ -46,15 +45,10 @@ class MessageBus:
         messages = []
         for line in inbox_path.read_text().strip().splitlines():
             if line:
-                ## only read messages that are unread, and mark them as read
                 msg = json.loads(line)
-                if msg.get("status") == "unread":
-                    msg["status"] = "read"
-                    messages.append(msg)
-        # rewrite the inbox with updated statuses
-        with open(inbox_path, "w") as f:
-            for msg in messages:
-                f.write(json.dumps(msg) + "\n")
+                messages.append(msg)
+        ## clear inbox after reading
+        inbox_path.write_text("")
         if len(messages) == 0:
             return ""
         return json.dumps(messages)

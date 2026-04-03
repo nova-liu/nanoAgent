@@ -18,13 +18,20 @@ Skills available:
 Use the task tool to delegate exploration or subtasks.
 """
 
+SUB_AGENT_SYSTEM_TEMPLATE = f"""
+Your name is {{name}} and your role is {{role}}.
+You are a sub-agent created by the main agent to assist with specific tasks.
+Use load_skill to access specialized knowledge before tackling unfamiliar topics.
+Skills available:
+{skill.get_descriptions()}.
+You can't spawn new agents, and you don't have access to the task tool. Focus on the task given by the main agent and report back the results.
+"""
 
 class Agent:
     def __init__(
         self,
         model="doubao-seed-1-8-251228",
         max_tokens=8000,
-        n=1,
         tools=tools,
         client=client,
         sub_agent=None,
@@ -35,16 +42,17 @@ class Agent:
         team_dir=TEAM_DIR,
         role="leader",
         message_bus=message_bus,
+        system_template=SYSTEM_TEMPLATE,
     ):
-        system = SYSTEM_TEMPLATE.format(name=name, role=role)
+        self.name = name
+        self.role = role
+
         self.model = model
         self.tools = tools
         self.max_tokens = max_tokens
-        self.n = n
-        self.messages = [{"role": "system", "content": system}]
+        self.messages = [{"role": "system", "content": system_template.format(name=name, role=role)}]
         self.client = client
         self.sub_agent = sub_agent
-        self.name = name
         self.logger = logger
         self.transcript_dir = transcript_dir
         self.max_context_tokens = max_context_tokens
@@ -53,7 +61,6 @@ class Agent:
         self.team_config_path = self.team_dir / "config.json"
         self.team_config = self._load_team_config()
         self.threads = {}
-        self.role = role
         self.message_bus = message_bus
 
     def _load_team_config(self) -> dict:
@@ -69,6 +76,23 @@ class Agent:
             if m["name"] == name:
                 return m
         return None
+
+    def do_one_task(self, task: str) -> str:
+        while True:
+            self.append_user_message(task)
+            self.log_messages()
+            response = self.call_llm(self.messages)
+            self.log_response(response)
+
+            msg = response.choices[0].message
+            # append the assistant message to the conversation, including any tool calls or refusals
+            self.append_assistant_message(msg.content)
+
+            if not msg.tool_calls:
+                break
+            # need to run the tool calls and append the results to the conversation before the next turn
+            self.handle_tool_calls(msg)
+        return self.final_response()
 
     def spawn(self, name: str, role: str) -> str:
         member = self._find_member(name)
@@ -89,6 +113,7 @@ class Agent:
             name=name,
             logger=self.logger,
             role=role,
+            system_template=SYSTEM_TEMPLATE
         )
 
         thread = threading.Thread(
@@ -155,7 +180,7 @@ class Agent:
             messages=messages,
             tools=self.tools.tools,
             max_tokens=self.max_tokens,
-            n=self.n,
+            n=1,
         )
         return response
 
@@ -173,8 +198,8 @@ class Agent:
         if content:
             self.messages.append({"role": "assistant", "content": content})
 
-    def re_init_messages(self, system):
-        self.messages = [{"role": "system", "content": system}]
+    def init_messages(self):
+        self.messages = [{"role": "system", "content": self.system_template.format(name=self.name, role=self.role)}]
 
     def log_messages(self):
         self.logger.log_messages(self.name, self.messages)
@@ -266,10 +291,9 @@ class Agent:
     def handle_delegation(self, tool_name: str, args: dict) -> str:
         if tool_name == "sub_agent_tool" and self.sub_agent:
             prompt = args["prompt"]
-            self.sub_agent.append_user_message(prompt)
-            self.sub_agent.run_loop()
+            self.sub_agent.do_one_task(prompt)
             sub_result = self.sub_agent.final_response()
-            self.sub_agent.re_init_messages(SUB_AGENT_SYSTEM)
+            self.sub_agent.init_messages()
             return sub_result
         elif tool_name == "compact":
             self.auto_compact()
@@ -282,7 +306,7 @@ class Agent:
             return f"Unknown delegation for tool '{tool_name}'"
 
 
-subAgent = Agent(tools=tools, client=client, name="subAgent", role="assistant", message_bus=message_bus)
+subAgent = Agent(system_template=SUB_AGENT_SYSTEM_TEMPLATE, tools=tools, client=client, name="subAgent", role="assistant", message_bus=message_bus)
 mainAgent = Agent(
     tools=tools,
     client=client,
