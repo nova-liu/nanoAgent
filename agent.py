@@ -9,18 +9,13 @@ import threading
 from config import WORKDIR, TRANSCRIPT_DIR, TEAM_DIR
 from message_bus import message_bus
 
-MAIN_AGENT_SYSTEM = f"""
+SYSTEM_TEMPLATE= f"""
+Your name is {{name}} and your role is {{role}}.
 You are a coding agent at {WORKDIR}.
 Use load_skill to access specialized knowledge before tackling unfamiliar topics.
 Skills available:
 {skill.get_descriptions()}.
-Use the task tool to delegate exploration or subtasks."""
-
-SUB_AGENT_SYSTEM = f"""You are a coding agent at {WORKDIR}.
-You will be given a prompt from the main agent, and you should respond with a final answer.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
-Skills available:
-{skill.get_descriptions()}.
+Use the task tool to delegate exploration or subtasks.
 """
 
 
@@ -30,7 +25,6 @@ class Agent:
         model="doubao-seed-1-8-251228",
         max_tokens=8000,
         n=1,
-        system=MAIN_AGENT_SYSTEM,
         tools=tools,
         client=client,
         sub_agent=None,
@@ -42,6 +36,7 @@ class Agent:
         role="leader",
         message_bus=message_bus,
     ):
+        system = SYSTEM_TEMPLATE.format(name=name, role=role)
         self.model = model
         self.tools = tools
         self.max_tokens = max_tokens
@@ -287,11 +282,12 @@ class Agent:
             return f"Unknown delegation for tool '{tool_name}'"
 
 
-subAgent = Agent(system=SUB_AGENT_SYSTEM, tools=tools, client=client, name="subAgent")
+subAgent = Agent(tools=tools, client=client, name="subAgent", role="assistant", message_bus=message_bus)
 mainAgent = Agent(
-    system=MAIN_AGENT_SYSTEM,
     tools=tools,
     client=client,
     sub_agent=subAgent,
     name="mainAgent",
+    role="leader",
+    message_bus=message_bus,
 )
