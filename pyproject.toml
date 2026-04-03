@@ -1,0 +1,18 @@
+[project]
+name = "nanoAgent"
+version = "0.1.0"
+description = "A small terminal-based coding agent built on top of the OpenAI-compatible Chat Completions API"
+authors = [
+  { name = "Your Name", email = "you@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+  "openai>=1.0",
+  "rich>=13.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
