@@ -39,23 +39,6 @@ class Agent:
         self.threads = {}
         self.message_bus = message_bus
 
-    def do_one_task(self, task: str) -> str:
-        while True:
-            self.append_user_message(task)
-            self.log_messages()
-            response = self.call_llm(self.messages)
-            self.log_response(response)
-
-            msg = response.choices[0].message
-            # append the assistant message to the conversation, including any tool calls or refusals
-            self.append_assistant_message(msg.content)
-
-            if not msg.tool_calls:
-                break
-            # need to run the tool calls and append the results to the conversation before the next turn
-            self.handle_tool_calls(msg)
-        return self.final_response()
-
     def run_loop(self):
         while True:
             if self.estimate_tokens() > self.max_context_tokens:
@@ -66,27 +49,25 @@ class Agent:
                 print("No new messages. Waiting...")
                 time.sleep(3)
                 continue
-            self.append_user_message(f"<inbox>{message}</inbox>")
-            self.log_messages()
+            self.messages.append(
+                {"role": "user", "content": f"<inbox>{message}</inbox>"}
+            )
+
+            self.logger.log_messages(self.name, self.messages)
+
             while True:
                 response = self.call_llm(self.messages)
-                self.log_response(response)
-
+                self.logger.log_response(self.name, response)
                 msg = response.choices[0].message
                 # append the assistant message to the conversation, including any tool calls or refusals
-                self.append_assistant_message(msg.content)
+                if msg.content:
+                    self.messages.append({"role": "assistant", "content": msg.content})
 
                 if not msg.tool_calls:
                     break
 
                 # need to run the tool calls and append the results to the conversation before the next turn
                 self.handle_tool_calls(msg)
-
-    def final_response(self) -> str:
-        return self.messages[-1]["content"] if self.messages else ""
-
-    def append_user_message(self, content: str):
-        self.messages.append({"role": "user", "content": content})
 
     def use_tool(self, name: str, args: dict) -> str:
         try:
@@ -110,26 +91,6 @@ class Agent:
             n=1,
         )
         return response
-
-    def append_tool_response(self, tool_call_id: str, content: str):
-        self.messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": content,
-            }
-        )
-        self.compact_tool_result()
-
-    def append_assistant_message(self, content: str):
-        if content:
-            self.messages.append({"role": "assistant", "content": content})
-
-    def log_messages(self):
-        self.logger.log_messages(self.name, self.messages)
-
-    def log_response(self, response):
-        self.logger.log_response(self.name, response)
 
     def compact_tool_result(self):
         tool_indexes = [
@@ -182,8 +143,14 @@ class Agent:
         return len(str(self.messages)) // 4
 
     def handle_tool_calls(self, msg):
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
-                args = json.loads(tc.function.arguments)
-                result = self.use_tool(tc.function.name, args)
-                self.append_tool_response(tc.id, result)
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments)
+            result = self.use_tool(tc.function.name, args)
+            self.messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                }
+            )
+        self.compact_tool_result()
