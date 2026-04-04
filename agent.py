@@ -5,6 +5,7 @@ from log import logger
 from config import TRANSCRIPT_DIR
 from tool_message_bus import message_bus
 from tool import Tool
+from agent_context import AgentContext
 
 
 class Agent:
@@ -20,40 +21,40 @@ class Agent:
         role="leader",
         system_template="Your name is {name} and your role is {role}.",
     ):
-        self.name = name
-        self.role = role
-        self.model = model
-        self.tools = tools
-        self.max_tokens = max_tokens
-        self.messages = [
-            {"role": "system", "content": system_template.format(name=name, role=role)}
-        ]
-        self.client = client
+        self.context = AgentContext(
+            name,
+            role,
+            system_template,
+            model,
+            client,
+            max_tokens,
+            max_context_tokens,
+        )
         self.sub_agent = sub_agent
-        self.max_context_tokens = max_context_tokens
+        self.tools = tools
 
     def run_loop(self):
         while True:
-            if self.estimate_tokens() > self.max_context_tokens:
-                self.auto_compact()
-            message = message_bus.read_inbox(self.name)
+            message = message_bus.read_inbox(self.context.name)
             if not message:
                 print("No new messages. Waiting...")
                 time.sleep(3)
                 continue
-            self.messages.append(
+            self.context.messages.append(
                 {"role": "user", "content": f"<inbox>{message}</inbox>"}
             )
 
-            logger.log_messages(self.name, self.messages)
+            logger.log_messages(self.context.name, self.context.messages)
 
             while True:
-                response = self.call_llm(self.messages)
-                logger.log_response(self.name, response)
+                response = self.call_llm(self.context.messages)
+                logger.log_response(self.context.name, response)
                 msg = response.choices[0].message
                 # append the assistant message to the conversation, including any tool calls or refusals
                 if msg.content:
-                    self.messages.append({"role": "assistant", "content": msg.content})
+                    self.context.messages.append(
+                        {"role": "assistant", "content": msg.content}
+                    )
 
                 if not msg.tool_calls:
                     break
@@ -61,88 +62,40 @@ class Agent:
                 # need to run the tool calls and append the results to the conversation before the next turn
                 self.handle_tool_calls(msg)
 
-    def use_tool(self, name: str, args: dict) -> str:
-        try:
-            tool = next((t for t in self.tools if t.name == name), None)
-            if not tool:
-                return f"Tool '{name}' not found"
-            result = tool.do(args)
-            return result
-        except Exception as e:
-            return f"Error using tool '{name}': {str(e)}"
+
 
     def call_llm(self, messages=None):
         if messages is None:
             return
         tool_contents = [t.content for t in self.tools]
-        response = self.client.chat.completions.create(
-            model=self.model,
+        response = self.context.client.chat.completions.create(
+            model=self.context.model,
             messages=messages,
             tools=tool_contents,
-            max_tokens=self.max_tokens,
+            max_tokens=self.context.max_tokens,
             n=1,
         )
+        
         return response
-
-    def compact_tool_result(self):
-        tool_indexes = [
-            idx for idx, msg in enumerate(self.messages) if msg.get("role") == "tool"
-        ]
-        if len(tool_indexes) <= 3:
-            return
-
-        drop_indexes = set(tool_indexes[:-3])
-        self.messages = [
-            msg for idx, msg in enumerate(self.messages) if idx not in drop_indexes
-        ]
-
-    def auto_compact(self):
-        TRANSCRIPT_DIR.mkdir(exist_ok=True)
-        transcript_path = TRANSCRIPT_DIR / f"transcript_{int(time.time())}.jsonl"
-        with open(transcript_path, "w") as f:
-            for msg in self.messages:
-                f.write(json.dumps(msg, default=str) + "\n")
-        print(f"[transcript saved: {transcript_path}]")
-        # Ask LLM to summarize
-        conversation_text = json.dumps(self.messages, default=str)[:80000]
-        response = self.call_llm(
-            messages=[
-                {
-                    "role": "user",
-                    "content": "Summarize this conversation for continuity. Include: "
-                    "1) What was accomplished, 2) Current state, 3) Key decisions made. "
-                    "Be concise but preserve critical details.\n\n" + conversation_text,
-                }
-            ],
-        )
-        summary = response.choices[0].message.content
-        # Replace all messages with compressed summary
-        self.messages = [
-            {"role": "system", "content": self.messages[0]["content"]},
-            {
-                "role": "user",
-                "content": f"[Conversation compressed. Transcript: {transcript_path}]\n\n{summary}",
-            },
-            {
-                "role": "assistant",
-                "content": "Understood. I have the context from the summary. Continuing.",
-            },
-        ]
-        return
-
-    def estimate_tokens(self) -> int:
-        """Rough token count: ~4 chars per token."""
-        return len(str(self.messages)) // 4
 
     def handle_tool_calls(self, msg):
         for tc in msg.tool_calls:
             args = json.loads(tc.function.arguments)
-            result = self.use_tool(tc.function.name, args)
-            self.messages.append(
+            result = self._use_tool(tc.function.name, args)
+            self.context.messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "content": result,
                 }
             )
-        self.compact_tool_result()
+
+    def _use_tool(self, name: str, args: dict) -> str:
+        try:
+            tool = next((t for t in self.tools if t.name == name), None)
+            if not tool:
+                return f"Tool '{name}' not found"
+            result = tool.do(self.context, args)
+            return result
+        except Exception as e:
+            return f"Error using tool '{name}': {str(e)}"
