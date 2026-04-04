@@ -1,81 +1,43 @@
 from client import client
-from tool import tools
-from skill import skill
 import time
 import json
 from log import logger
-from pathlib import Path
-import threading
-from config import WORKDIR, TRANSCRIPT_DIR, TEAM_DIR
+from config import TRANSCRIPT_DIR
 from message_bus import message_bus
+from t import Tool
 
-SYSTEM_TEMPLATE= f"""
-Your name is {{name}} and your role is {{role}}.
-You are a coding agent at {WORKDIR}.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
-Skills available:
-{skill.get_descriptions()}.
-Use the task tool to delegate exploration or subtasks.
-"""
-
-SUB_AGENT_SYSTEM_TEMPLATE = f"""
-Your name is {{name}} and your role is {{role}}.
-You are a sub-agent created by the main agent to assist with specific tasks.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
-Skills available:
-{skill.get_descriptions()}.
-You can't spawn new agents, and you don't have access to the task tool. Focus on the task given by the main agent and report back the results.
-"""
 
 class Agent:
     def __init__(
         self,
         model="doubao-seed-1-8-251228",
         max_tokens=8000,
-        tools=tools,
+        tools: list[Tool] = None,
         client=client,
-        sub_agent=None,
+        sub_agent: "Agent" = None,
         name="mainAgent",
         logger=logger,
         transcript_dir=TRANSCRIPT_DIR,
         max_context_tokens=1600,
-        team_dir=TEAM_DIR,
         role="leader",
         message_bus=message_bus,
-        system_template=SYSTEM_TEMPLATE,
+        system_template="Your name is {name} and your role is {role}.",
     ):
         self.name = name
         self.role = role
-
         self.model = model
         self.tools = tools
         self.max_tokens = max_tokens
-        self.messages = [{"role": "system", "content": system_template.format(name=name, role=role)}]
+        self.messages = [
+            {"role": "system", "content": system_template.format(name=name, role=role)}
+        ]
         self.client = client
         self.sub_agent = sub_agent
         self.logger = logger
         self.transcript_dir = transcript_dir
         self.max_context_tokens = max_context_tokens
-        self.team_dir = team_dir
-        self.team_dir.mkdir(exist_ok=True)
-        self.team_config_path = self.team_dir / "config.json"
-        self.team_config = self._load_team_config()
         self.threads = {}
         self.message_bus = message_bus
-
-    def _load_team_config(self) -> dict:
-        if self.team_config_path.exists():
-            return json.loads(self.team_config_path.read_text())
-        return {"team_name": "default", "members": []}
-
-    def _save_team_config(self):
-        self.team_config_path.write_text(json.dumps(self.team_config, indent=2))
-
-    def _find_member(self, name: str) -> dict:
-        for m in self.team_config["members"]:
-            if m["name"] == name:
-                return m
-        return None
 
     def do_one_task(self, task: str) -> str:
         while True:
@@ -94,49 +56,6 @@ class Agent:
             self.handle_tool_calls(msg)
         return self.final_response()
 
-    def spawn(self, name: str, role: str) -> str:
-        member = self._find_member(name)
-        if member:
-            if member["status"] not in ("idle", "shutdown"):
-                return f"Error: '{name}' is currently {member['status']}"
-            member["status"] = "working"
-            member["role"] = role
-        else:
-            member = {"name": name, "role": role, "status": "working"}
-            self.team_config["members"].append(member)
-        self._save_team_config()
-
-        agent = Agent(
-            model=self.model,
-            tools=self.tools,
-            client=self.client,
-            name=name,
-            logger=self.logger,
-            role=role,
-            system_template=SYSTEM_TEMPLATE
-        )
-
-        thread = threading.Thread(
-            target=agent.run_loop,
-            args=(),
-            daemon=True,
-        )
-
-        self.threads[name] = thread
-        thread.start()
-        return f"Spawned '{name}' (role: {role})"
-
-    def list_team_all(self) -> str:
-        if not self.team_config["members"]:
-            return "No teammates."
-        lines = [f"Team: {self.team_config['team_name']}"]
-        for m in self.team_config["members"]:
-            lines.append(f"  {m['name']} ({m['role']}): {m['status']}")
-        return "\n".join(lines)
-
-    def member_names(self) -> list:
-        return [m["name"] for m in self.team_config["members"]]
-
     def run_loop(self):
         while True:
             if self.estimate_tokens() > self.max_context_tokens:
@@ -149,15 +68,19 @@ class Agent:
                 continue
             self.append_user_message(f"<inbox>{message}</inbox>")
             self.log_messages()
-            response = self.call_llm(self.messages)
-            self.log_response(response)
+            while True:
+                response = self.call_llm(self.messages)
+                self.log_response(response)
 
-            msg = response.choices[0].message
-            # append the assistant message to the conversation, including any tool calls or refusals
-            self.append_assistant_message(msg.content)
+                msg = response.choices[0].message
+                # append the assistant message to the conversation, including any tool calls or refusals
+                self.append_assistant_message(msg.content)
 
-            # need to run the tool calls and append the results to the conversation before the next turn
-            self.handle_tool_calls(msg)
+                if not msg.tool_calls:
+                    break
+
+                # need to run the tool calls and append the results to the conversation before the next turn
+                self.handle_tool_calls(msg)
 
     def final_response(self) -> str:
         return self.messages[-1]["content"] if self.messages else ""
@@ -167,7 +90,10 @@ class Agent:
 
     def use_tool(self, name: str, args: dict) -> str:
         try:
-            result = self.tools.dispatch(name, args)
+            tool = next((t for t in self.tools if t.name == name), None)
+            if not tool:
+                return f"Tool '{name}' not found"
+            result = tool.do(args)
             return result
         except Exception as e:
             return f"Error using tool '{name}': {str(e)}"
@@ -175,10 +101,11 @@ class Agent:
     def call_llm(self, messages=None):
         if messages is None:
             return
+        tool_contents = [t.content for t in self.tools]
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
-            tools=self.tools.tools,
+            tools=tool_contents,
             max_tokens=self.max_tokens,
             n=1,
         )
@@ -197,9 +124,6 @@ class Agent:
     def append_assistant_message(self, content: str):
         if content:
             self.messages.append({"role": "assistant", "content": content})
-
-    def init_messages(self):
-        self.messages = [{"role": "system", "content": self.system_template.format(name=self.name, role=self.role)}]
 
     def log_messages(self):
         self.logger.log_messages(self.name, self.messages)
@@ -260,58 +184,6 @@ class Agent:
     def handle_tool_calls(self, msg):
         if msg.tool_calls:
             for tc in msg.tool_calls:
-                if self.delegate_by_agent(tc.function.name):
-                    result = self.handle_delegation(
-                        tc.function.name, json.loads(tc.function.arguments)
-                    )
-                    self.append_tool_response(tc.id, result)
-                    continue
                 args = json.loads(tc.function.arguments)
                 result = self.use_tool(tc.function.name, args)
                 self.append_tool_response(tc.id, result)
-
-    def clear_notifications(self):
-        notifs = self.tools.BG.drain_notifications()
-        if notifs and self.messages:
-            notif_text = "\n".join(
-                f"[bg:{n['task_id']}] {n['status']}: {n['result']}" for n in notifs
-            )
-            self.messages.append(
-                {
-                    "role": "user",
-                    "content": f"<background-results>\n{notif_text}\n</background-results>",
-                }
-            )
-
-    def delegate_by_agent(self, tool_name: str) -> bool:
-        if tool_name in ["sub_agent_tool", "compact", "list_team_all", "spawn"]:
-            return True
-        return False
-
-    def handle_delegation(self, tool_name: str, args: dict) -> str:
-        if tool_name == "sub_agent_tool" and self.sub_agent:
-            prompt = args["prompt"]
-            self.sub_agent.do_one_task(prompt)
-            sub_result = self.sub_agent.final_response()
-            self.sub_agent.init_messages()
-            return sub_result
-        elif tool_name == "compact":
-            self.auto_compact()
-            return "Context compacted."
-        elif tool_name == "list_team_all":
-            return self.list_team_all()
-        elif tool_name == "spawn":
-            return self.spawn(args["name"], args["role"])
-        else:
-            return f"Unknown delegation for tool '{tool_name}'"
-
-
-subAgent = Agent(system_template=SUB_AGENT_SYSTEM_TEMPLATE, tools=tools, client=client, name="subAgent", role="assistant", message_bus=message_bus)
-mainAgent = Agent(
-    tools=tools,
-    client=client,
-    sub_agent=subAgent,
-    name="mainAgent",
-    role="leader",
-    message_bus=message_bus,
-)
