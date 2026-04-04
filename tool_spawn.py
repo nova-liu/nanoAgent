@@ -44,11 +44,9 @@ Use the sub_agent_task_tool to delegate exploration or subtasks.
 
 SPAWN_SUB_AGENT_SYSTEM_TEMPLATE = f"""
 Your name is {{name}} and your role is {{role}}.
-You are a sub-agent spawned by the main agent to assist with a specific task.
 Use load_skill to access specialized knowledge before tackling unfamiliar topics.
 Skills available:
 {skill.get_descriptions()}.
-You can't spawn new agents, and you don't have access to the sub-agent tool. Focus on the task given by the main agent and report back the results.
 """
 
 SPAWN_TOOL_BOX = [
@@ -80,20 +78,11 @@ def spawn(agent_context: AgentContext, name: str, role: str) -> str:
         TEAM_CONFIG["members"].append(member)
     TEAM_CONFIG_PATH.write_text(json.dumps(TEAM_CONFIG, indent=2))
 
-    subAgent = Agent(
-        system_template=SPAWN_SUB_AGENT_SYSTEM_TEMPLATE,
-        tools=SPAWN_TOOL_BOX,
-        client=client,
-        name="subAgent",
-        role="assistant",
-    )
-
     mainAgent = Agent(
         tools=SPAWN_TOOL_BOX,
         client=client,
-        sub_agent=subAgent,
-        name="mainAgent",
-        role="leader",
+        name=name,
+        role=role,
         system_template=SPAWN_AGENT_SYSTEM_TEMPLATE,
     )
 

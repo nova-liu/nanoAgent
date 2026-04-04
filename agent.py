@@ -6,6 +6,7 @@ from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
 
+
 class Agent:
     def __init__(
         self,

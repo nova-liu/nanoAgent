@@ -4,6 +4,11 @@
       "name": "wangzai",
       "role": "dog",
       "status": "working"
+    },
+    {
+      "name": "wangwang",
+      "role": "\u65e0\u8d56",
+      "status": "working"
     }
   ]
 }
