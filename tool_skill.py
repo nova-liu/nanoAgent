@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 from config import SKILL_DIR
+from tool import Tool
 
 
 class Skill:
@@ -52,10 +53,13 @@ class Skill:
         return f"<skill name=\"{name}\">\n{skill['body']}\n</skill>"
 
 
+skill = Skill()
+
+NAME = "get_skill"
 skill_tool = {
     "type": "function",
     "function": {
-        "name": "get_skill",
+        "name": NAME,
         "description": "Get the content of a skill by name.",
         "parameters": {
             "type": "object",
@@ -70,4 +74,5 @@ skill_tool = {
     },
 }
 
-skill = Skill()
+
+skill_tool_instance = Tool(name=NAME, content=skill_tool, function=skill.get_content)

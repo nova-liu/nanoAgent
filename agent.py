@@ -3,8 +3,8 @@ import time
 import json
 from log import logger
 from config import TRANSCRIPT_DIR
-from message_bus import message_bus
-from t import Tool
+from tool_message_bus import message_bus
+from tool import Tool
 
 
 class Agent:
@@ -16,11 +16,8 @@ class Agent:
         client=client,
         sub_agent: "Agent" = None,
         name="mainAgent",
-        logger=logger,
-        transcript_dir=TRANSCRIPT_DIR,
         max_context_tokens=1600,
         role="leader",
-        message_bus=message_bus,
         system_template="Your name is {name} and your role is {role}.",
     ):
         self.name = name
@@ -33,18 +30,13 @@ class Agent:
         ]
         self.client = client
         self.sub_agent = sub_agent
-        self.logger = logger
-        self.transcript_dir = transcript_dir
         self.max_context_tokens = max_context_tokens
-        self.threads = {}
-        self.message_bus = message_bus
 
     def run_loop(self):
         while True:
             if self.estimate_tokens() > self.max_context_tokens:
                 self.auto_compact()
-            message = self.message_bus.read_inbox(self.name)
-            print(f"[{self.name} inbox] {message}")
+            message = message_bus.read_inbox(self.name)
             if not message:
                 print("No new messages. Waiting...")
                 time.sleep(3)
@@ -53,11 +45,11 @@ class Agent:
                 {"role": "user", "content": f"<inbox>{message}</inbox>"}
             )
 
-            self.logger.log_messages(self.name, self.messages)
+            logger.log_messages(self.name, self.messages)
 
             while True:
                 response = self.call_llm(self.messages)
-                self.logger.log_response(self.name, response)
+                logger.log_response(self.name, response)
                 msg = response.choices[0].message
                 # append the assistant message to the conversation, including any tool calls or refusals
                 if msg.content:
@@ -105,8 +97,8 @@ class Agent:
         ]
 
     def auto_compact(self):
-        self.transcript_dir.mkdir(exist_ok=True)
-        transcript_path = self.transcript_dir / f"transcript_{int(time.time())}.jsonl"
+        TRANSCRIPT_DIR.mkdir(exist_ok=True)
+        transcript_path = TRANSCRIPT_DIR / f"transcript_{int(time.time())}.jsonl"
         with open(transcript_path, "w") as f:
             for msg in self.messages:
                 f.write(json.dumps(msg, default=str) + "\n")

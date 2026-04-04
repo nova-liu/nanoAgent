@@ -2,11 +2,12 @@ from pathlib import Path
 import json
 import time
 from config import INBOX_DIR
+from tool import Tool
 
-VALID_MSG_TYPES = {
+VALID_MSG_TYPES = [
     "message",
     "shutdown",
-}
+]
 
 
 # -- MessageBus: JSONL inbox per teammate --
@@ -54,6 +55,9 @@ class MessageBus:
         return json.dumps(messages)
 
 
+message_bus = MessageBus(INBOX_DIR)
+
+
 send_message_tool = {
     "type": "function",
     "function": {
@@ -94,4 +98,10 @@ read_inbox_tool = {
     },
 }
 
-message_bus = MessageBus(INBOX_DIR)
+send_message_tool_instance = Tool(
+    name="send_message", content=send_message_tool, function=message_bus.send
+)
+
+read_inbox_tool_instance = Tool(
+    name="read_inbox", content=read_inbox_tool, function=message_bus.read_inbox
+)

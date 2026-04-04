@@ -1,4 +1,4 @@
-from message_bus import message_bus
+from tool_message_bus import message_bus
 
 if __name__ == "__main__":
     while True:
