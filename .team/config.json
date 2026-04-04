@@ -1,19 +1,8 @@
 {
-  "team_name": "default",
   "members": [
     {
       "name": "wangzai",
       "role": "dog",
-      "status": "working"
-    },
-    {
-      "name": "yanghuan",
-      "role": "teacher",
-      "status": "working"
-    },
-    {
-      "name": "yf",
-      "role": "sb",
       "status": "working"
     }
   ]

@@ -9,5 +9,21 @@ TASKS_DIR = WORKDIR / ".tasks"
 SKILL_DIR = WORKDIR / "skills"
 TEAM_DIR = WORKDIR / ".team"
 TEAM_CONFIG_PATH = TEAM_DIR / "config.json"
+# team config structure:
+# {
+#   "members": [
+#     {
+#       "name": "agent1",
+#       "role": "researcher",
+#       "status": "active"
+#     },
+#     ...
+#   ]
+# }
+if not TEAM_CONFIG_PATH.exists():
+    TEAM_DIR.mkdir(parents=True, exist_ok=True)
+    TEAM_CONFIG_PATH.write_text(json.dumps({"members": []}, indent=2))
+
 INBOX_DIR = TEAM_DIR / "inbox"
+
 TEAM_CONFIG = json.loads(TEAM_CONFIG_PATH.read_text())
