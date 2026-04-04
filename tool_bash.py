@@ -1,6 +1,7 @@
 import os
 import subprocess
 from tool import Tool
+from agent_context import AgentContext
 
 NAME = "bash"
 # tool bash
@@ -20,7 +21,7 @@ bash_tool = {
 }
 
 
-def run_bash(command: str) -> str:
+def run_bash(agent_context: AgentContext, command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
         raise Exception("Error: Dangerous command blocked")

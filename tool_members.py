@@ -1,5 +1,6 @@
 from config import TEAM_CONFIG
 from tool import Tool
+from agent_context import AgentContext
 
 NAME = "members"
 members_tool = {
@@ -16,7 +17,7 @@ members_tool = {
 }
 
 
-def member_names() -> str:
+def member_names(agent_context: AgentContext) -> str:
     return ", ".join([m["name"] for m in TEAM_CONFIG["members"]])
 
 

@@ -13,6 +13,7 @@ from tool_edit_file import edit_file_tool_instance
 from tool_members import members_tool_instance
 from tool_message_bus import send_message_tool_instance, read_inbox_tool_instance
 from tool_compact import compact_tool_instance
+from agent_context import AgentContext
 
 NAME = "spawn"
 
@@ -64,7 +65,7 @@ SPAWN_TOOL_BOX = [
 ]
 
 
-def spawn(name: str, role: str) -> str:
+def spawn(agent_context: AgentContext, name: str, role: str) -> str:
     member = None
     for m in TEAM_CONFIG["members"]:
         if m["name"] == name:

@@ -1,5 +1,6 @@
 import os
 from tool import Tool
+from agent_context import AgentContext
 
 NAME = "edit_file"
 edit_file_tool = {
@@ -20,7 +21,9 @@ edit_file_tool = {
 }
 
 
-def edit_file(filename: str, old_content: str, new_content: str) -> str:
+def edit_file(
+    agent_context: AgentContext, filename: str, old_content: str, new_content: str
+) -> str:
     if not os.path.isfile(filename):
         raise Exception(f"Error: File '{filename}' does not exist.")
     try:

@@ -2,11 +2,9 @@ from client import client
 import time
 import json
 from log import logger
-from config import TRANSCRIPT_DIR
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
-
 
 class Agent:
     def __init__(
@@ -15,7 +13,6 @@ class Agent:
         max_tokens=8000,
         tools: list[Tool] = None,
         client=client,
-        sub_agent: "Agent" = None,
         name="mainAgent",
         max_context_tokens=1600,
         role="leader",
@@ -30,12 +27,11 @@ class Agent:
             max_tokens,
             max_context_tokens,
         )
-        self.sub_agent = sub_agent
         self.tools = tools
 
     def run_loop(self):
         while True:
-            message = message_bus.read_inbox(self.context.name)
+            message = message_bus.read_inbox(self.context, self.context.name)
             if not message:
                 print("No new messages. Waiting...")
                 time.sleep(3)
@@ -44,25 +40,25 @@ class Agent:
                 {"role": "user", "content": f"<inbox>{message}</inbox>"}
             )
 
+            self.one_task()
+
+    def one_task(self):
+        while True:
             logger.log_messages(self.context.name, self.context.messages)
+            response = self.call_llm(self.context.messages)
+            logger.log_response(self.context.name, response)
+            msg = response.choices[0].message
+            # append the assistant message to the conversation, including any tool calls or refusals
+            if msg.content:
+                self.context.messages.append(
+                    {"role": "assistant", "content": msg.content}
+                )
 
-            while True:
-                response = self.call_llm(self.context.messages)
-                logger.log_response(self.context.name, response)
-                msg = response.choices[0].message
-                # append the assistant message to the conversation, including any tool calls or refusals
-                if msg.content:
-                    self.context.messages.append(
-                        {"role": "assistant", "content": msg.content}
-                    )
+            if not msg.tool_calls:
+                break
 
-                if not msg.tool_calls:
-                    break
-
-                # need to run the tool calls and append the results to the conversation before the next turn
-                self.handle_tool_calls(msg)
-
-
+            # need to run the tool calls and append the results to the conversation before the next turn
+            self.handle_tool_calls(msg)
 
     def call_llm(self, messages=None):
         if messages is None:
@@ -75,7 +71,7 @@ class Agent:
             max_tokens=self.context.max_tokens,
             n=1,
         )
-        
+
         return response
 
     def handle_tool_calls(self, msg):

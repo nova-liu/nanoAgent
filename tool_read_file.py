@@ -1,5 +1,6 @@
 from tool import Tool
 import os
+from agent_context import AgentContext
 
 NAME = "read_file"
 
@@ -19,7 +20,7 @@ read_file_tool = {
 }
 
 
-def read_file(filename: str) -> str:
+def read_file(agent_context: AgentContext, filename: str) -> str:
     if not os.path.isfile(filename):
         raise Exception(f"Error: File '{filename}' does not exist.")
     try:

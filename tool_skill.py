@@ -2,6 +2,7 @@ from pathlib import Path
 import re
 from config import SKILL_DIR
 from tool import Tool
+from agent_context import AgentContext
 
 
 class Skill:
@@ -45,7 +46,7 @@ class Skill:
             lines.append(line)
         return "\n".join(lines)
 
-    def get_content(self, name: str) -> str:
+    def get_content(self, agent_context: AgentContext, name: str) -> str:
         """Layer 2: full skill body returned in tool_result."""
         skill = self.skills.get(name)
         if not skill:

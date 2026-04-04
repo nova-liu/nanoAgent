@@ -22,15 +22,6 @@ Skills available:
 Use the sub_agent_task_tool to delegate exploration or subtasks.
 """
 
-SUB_AGENT_SYSTEM_TEMPLATE = f"""
-Your name is {{name}} and your role is {{role}}.
-You are a sub-agent created by the main agent to assist with specific tasks.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
-Skills available:
-{skill.get_descriptions()}.
-You can't spawn new agents, and you don't have access to the sub_agent_task_tool. Focus on the task given by the main agent and report back the results.
-"""
-
 DEFAULT_TOOL_BOX = [
     bash_tool_instance,
     write_file_tool_instance,
@@ -45,18 +36,9 @@ DEFAULT_TOOL_BOX = [
     skill_tool_instance,
 ]
 
-subAgent = Agent(
-    system_template=SUB_AGENT_SYSTEM_TEMPLATE,
-    tools=DEFAULT_TOOL_BOX,
-    client=client,
-    name="subAgent",
-    role="assistant",
-)
-
 mainAgent = Agent(
     tools=DEFAULT_TOOL_BOX,
     client=client,
-    sub_agent=subAgent,
     name="mainAgent",
     role="leader",
     system_template=SYSTEM_TEMPLATE,

@@ -3,6 +3,7 @@ import json
 import time
 from config import INBOX_DIR
 from tool import Tool
+from agent_context import AgentContext
 
 VALID_MSG_TYPES = [
     "message",
@@ -18,6 +19,7 @@ class MessageBus:
 
     def send(
         self,
+        agent_context: AgentContext,
         sender: str,
         to: str,
         content: str,
@@ -39,7 +41,7 @@ class MessageBus:
             f.write(json.dumps(msg) + "\n")
         return f"Sent {msg_type} to {to}"
 
-    def read_inbox(self, name: str) -> str:
+    def read_inbox(self, agent_context: AgentContext, name: str) -> str:
         inbox_path = self.dir / f"{name}.jsonl"
         if not inbox_path.exists():
             return ""

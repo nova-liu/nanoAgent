@@ -1,5 +1,6 @@
 import os
 from tool import Tool
+from agent_context import AgentContext
 
 NAME = "write_file"
 
@@ -20,7 +21,7 @@ write_file_tool = {
 }
 
 
-def write_file(filename: str, content: str) -> str:
+def write_file(agent_context: AgentContext, filename: str, content: str) -> str:
     try:
         with open(filename, "w") as f:
             f.write(content)
