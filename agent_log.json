@@ -1,9 +1,9 @@
 {
-  "run_id": "619858dc-fdc9-4d0e-8c37-ff985ad98986",
+  "run_id": "5c89fb0b-4e9e-4500-9e56-65558209a2b7",
   "name": "mainAgent",
   "steps": [
     {
-      "step_id": "922a786a-a338-4835-bcb4-c71090c6a214",
+      "step_id": "997b4aa8-d47f-41bc-beaa-87593b3b5778",
       "type": "llm",
       "name": "chat",
       "input": {
@@ -14,21 +14,21 @@
           },
           {
             "role": "user",
-            "content": "<inbox>[{\"type\": \"message\", \"sender\": \"user\", \"content\": \"\\u5e72\\u5565\\u4e86\", \"timestamp\": 1775480911.5497448}]</inbox>"
+            "content": "<inbox>[{\"type\": \"message\", \"sender\": \"user\", \"content\": \"nihao\", \"timestamp\": 1775486025.1126778}]</inbox>"
           }
         ]
       },
       "output": {
-        "content": "我是 mainAgent，作为团队的领导者，我正准备和团队一起帮你完成任务。你有什么想让我们做的吗？比如编写代码、解决问题或者其他需求都可以告诉我。",
+        "content": "你好！有什么我可以帮助你的吗？无论是代码编写、项目规划还是其他技术问题，都可以告诉我。",
         "refusal": "",
         "role": "assistant",
         "tool_calls": []
       },
       "error": null,
-      "start_time": 1775480917.8219311,
-      "end_time": 1775480917.821943
+      "start_time": 1775486040.0924969,
+      "end_time": 1775486040.092507
     }
   ],
-  "start_time": 1775480745.586911,
-  "end_time": 1775480917.821949
+  "start_time": 1775486021.218934,
+  "end_time": 1775486040.0925179
 }

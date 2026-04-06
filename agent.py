@@ -5,6 +5,7 @@ from agent_logger import AgentLogger, step
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
+import sys
 
 print_lock = threading.Lock()
 
@@ -30,6 +31,10 @@ class Agent:
             max_tokens,
             max_context_tokens,
         )
+        self.agent_colors = [
+            "\033[96m",  # 青色
+            "\033[95m",  # 洋红色
+        ]        
         self.tools = tools
         self.logger = AgentLogger(name)
 
@@ -117,19 +122,22 @@ class Agent:
         role = ""
         tool_calls_dict = {}
         with print_lock:
-            print(f"\n[{self.context.name}]: ", end="", flush=True)
-
+            sys.stdout.write(f"{self.agent_colors[0]}[{self.context.name}]: {self.agent_colors[1]}")
+            sys.stdout.flush()
             for chunk in stream:
                 choice = chunk.choices[0]
                 delta = choice.delta
 
                 if delta.content:
                     content += delta.content
-                    print(delta.content, end="", flush=True)
+                    # 使用 sys.stdout.write 配合 flush，在 M4 Mac 上体验极佳
+                    sys.stdout.write(delta.content)
+                    sys.stdout.flush()
 
                 if delta.refusal:
                     refusal += delta.refusal
-                    print(delta.refusal, end="", flush=True)
+                    sys.stdout.write(delta.refusal)
+                    sys.stdout.flush()
 
                 if delta.role and not role:
                     role += delta.role
