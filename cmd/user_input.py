@@ -8,4 +8,4 @@ if __name__ == "__main__":
             print("Exiting...")
             break
 
-        message_bus.send("user", "mainAgent", user_input)
+        message_bus.send(None, "user", "mainAgent", user_input)

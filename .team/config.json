@@ -9,6 +9,11 @@
       "name": "wangwang",
       "role": "\u65e0\u8d56",
       "status": "working"
+    },
+    {
+      "name": "timeAgent",
+      "role": "time_checker",
+      "status": "working"
     }
   ]
 }

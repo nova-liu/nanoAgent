@@ -1,17 +1,18 @@
 from client import client
-import time
+import time, json, threading
 import json
 from agent_logger import AgentLogger, step
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
-from openai.types.chat.chat_completion import ChatCompletion
+
+print_lock = threading.Lock()
 
 
 class Agent:
     def __init__(
         self,
-        model="doubao-seed-1-8-251228",
+        model="doubao-seed-2-0-code-preview-260215",
         max_tokens=8000,
         tools: list[Tool] = None,
         client=client,
@@ -36,7 +37,6 @@ class Agent:
         while True:
             message = message_bus.read_inbox(self.context, self.context.name)
             if not message:
-                print("No new messages. Waiting...")
                 time.sleep(3)
                 continue
             self.context.messages.append(
@@ -47,41 +47,25 @@ class Agent:
 
     def one_task(self):
         while True:
-            response = self.call_llm()
-            msg = response.choices[0].message
+            content, _, role, tool_calls_list = self._stream_chat()
             # append the assistant message to the conversation, including any tool calls or refusals
-            if msg.content:
-                self.context.messages.append(
-                    {"role": "assistant", "content": msg.content}
-                )
+            if content:
+                self.context.messages.append({"role": role, "content": content})
 
-            if not msg.tool_calls:
+            if not tool_calls_list:
                 break
 
             # need to run the tool calls and append the results to the conversation before the next turn
-            self.handle_tool_calls(msg)
+            self.handle_tool_calls(tool_calls_list)
 
-    def call_llm(self):
-        tool_contents = [t.content for t in self.tools]
-        response = self.context.client.chat.completions.create(
-            model=self.context.model,
-            messages=self.context.messages,
-            tools=tool_contents,
-            max_tokens=self.context.max_tokens,
-            n=1,
-        )
-        self._chat_log(response)
-
-        return response
-
-    def handle_tool_calls(self, msg):
-        for tc in msg.tool_calls:
-            args = json.loads(tc.function.arguments)
-            result = self._use_tool(tc.function.name, args)
+    def handle_tool_calls(self, tool_calls_list):
+        for tc in tool_calls_list:
+            args = json.loads(tc["function"]["arguments"])
+            result = self._use_tool(tc["function"]["name"], args)
             self.context.messages.append(
                 {
                     "role": "tool",
-                    "tool_call_id": tc.id,
+                    "tool_call_id": tc["id"],
                     "content": result,
                 }
             )
@@ -96,7 +80,7 @@ class Agent:
         except Exception as e:
             return f"Error using tool '{name}': {str(e)}"
 
-    def _chat_log(self, response: ChatCompletion):
+    def _chat_log(self, content: str, refusal: str, role: str, tool_calls_list: list):
         # LLM step
         with step(self.logger, "llm", "chat") as s:
             s.set_input(
@@ -104,46 +88,99 @@ class Agent:
                     "messages": self.context.messages,
                 }
             )
-            msg = response.choices[0].message
-            tool_calls = (
-                [
-                    {
-                        "id": tc.id,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in msg.tool_calls
-                ]
-                if msg.tool_calls
-                else []
-            )
 
             s.set_output(
                 {
-                    "content": msg.content,
-                    "refusal": msg.refusal,
-                    "role": msg.role,
-                    "tool_calls": tool_calls,
+                    "content": content,
+                    "refusal": refusal,
+                    "role": role,
+                    "tool_calls": tool_calls_list,
                 }
             )
 
-            if msg.tool_calls:
-                s.set_output(
-                    {
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in msg.tool_calls
-                        ]
-                    }
-                )
-
         self.logger.finish()
         self.logger.save()
+
+    def _stream_chat(self) -> tuple[str, str, str, list]:
+        tool_contents = [t.content for t in self.tools]
+        stream = self.context.client.chat.completions.create(
+            model=self.context.model,
+            messages=self.context.messages,
+            stream=True,
+            tools=tool_contents,
+            max_tokens=self.context.max_tokens,
+            n=1,
+        )
+
+        content = ""
+        refusal = ""
+        role = ""
+        tool_calls_dict = {}
+        with print_lock:
+            print(f"\n[{self.context.name}]: ", end="", flush=True)
+
+            for chunk in stream:
+                choice = chunk.choices[0]
+                delta = choice.delta
+
+                if delta.content:
+                    content += delta.content
+                    print(delta.content, end="", flush=True)
+
+                if delta.refusal:
+                    refusal += delta.refusal
+                    print(delta.refusal, end="", flush=True)
+
+                if delta.role and not role:
+                    role += delta.role
+                # 2️⃣ tool call（重点）
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+
+                        if idx not in tool_calls_dict:
+                            tool_calls_dict[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+
+                        if tc.id:
+                            tool_calls_dict[idx]["id"] = tc.id
+
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_dict[idx]["name"] = tc.function.name
+
+                            if tc.function.arguments:
+                                tool_calls_dict[idx][
+                                    "arguments"
+                                ] += tc.function.arguments
+
+                if choice.finish_reason:
+                    break
+
+        tool_calls_list = build_tool_calls(tool_calls_dict)
+
+        self._chat_log(content, refusal, role, tool_calls_list)
+        return content, refusal, role, tool_calls_list
+
+
+def build_tool_calls(tool_calls_dict: dict) -> list:
+    tool_calls = []
+
+    for i in sorted(tool_calls_dict.keys()):
+        tc = tool_calls_dict[i]
+
+        tool_calls.append(
+            {
+                "id": tc["id"],
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": tc["arguments"],
+                },
+            }
+        )
+
+    return tool_calls
