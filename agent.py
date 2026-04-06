@@ -1,10 +1,11 @@
 from client import client
 import time
 import json
-from log import logger
+from agent_logger import AgentLogger, step
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
+from openai.types.chat.chat_completion import ChatCompletion
 
 
 class Agent:
@@ -29,6 +30,7 @@ class Agent:
             max_context_tokens,
         )
         self.tools = tools
+        self.logger = AgentLogger(name)
 
     def run_loop(self):
         while True:
@@ -45,9 +47,7 @@ class Agent:
 
     def one_task(self):
         while True:
-            logger.log_messages(self.context.name, self.context.messages)
-            response = self.call_llm(self.context.messages)
-            logger.log_response(self.context.name, response)
+            response = self.call_llm()
             msg = response.choices[0].message
             # append the assistant message to the conversation, including any tool calls or refusals
             if msg.content:
@@ -61,17 +61,16 @@ class Agent:
             # need to run the tool calls and append the results to the conversation before the next turn
             self.handle_tool_calls(msg)
 
-    def call_llm(self, messages=None):
-        if messages is None:
-            return
+    def call_llm(self):
         tool_contents = [t.content for t in self.tools]
         response = self.context.client.chat.completions.create(
             model=self.context.model,
-            messages=messages,
+            messages=self.context.messages,
             tools=tool_contents,
             max_tokens=self.context.max_tokens,
             n=1,
         )
+        self._chat_log(response)
 
         return response
 
@@ -96,3 +95,55 @@ class Agent:
             return result
         except Exception as e:
             return f"Error using tool '{name}': {str(e)}"
+
+    def _chat_log(self, response: ChatCompletion):
+        # LLM step
+        with step(self.logger, "llm", "chat") as s:
+            s.set_input(
+                {
+                    "messages": self.context.messages,
+                }
+            )
+            msg = response.choices[0].message
+            tool_calls = (
+                [
+                    {
+                        "id": tc.id,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ]
+                if msg.tool_calls
+                else []
+            )
+
+            s.set_output(
+                {
+                    "content": msg.content,
+                    "refusal": msg.refusal,
+                    "role": msg.role,
+                    "tool_calls": tool_calls,
+                }
+            )
+
+            if msg.tool_calls:
+                s.set_output(
+                    {
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ]
+                    }
+                )
+
+        self.logger.finish()
+        self.logger.save()
