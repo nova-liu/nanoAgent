@@ -7,12 +7,27 @@
     },
     {
       "name": "wangwang",
-      "role": "\u65e0\u8d56",
+      "role": "无赖",
       "status": "working"
     },
     {
       "name": "timeAgent",
       "role": "time_checker",
+      "status": "working"
+    },
+    {
+      "name": "reviewer",
+      "role": "code-review",
+      "status": "working"
+    },
+    {
+      "name": "nn",
+      "role": "dd",
+      "status": "working"
+    },
+    {
+      "name": "mainAgent",
+      "role": "leader",
       "status": "working"
     }
   ]

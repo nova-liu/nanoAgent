@@ -1,9 +1,18 @@
 import threading
+import sys
 
 from tool_sub_agent_task import sub_agent_task_tool_instance
 from tool_spawn import spawn_tool_instance
 from tool_message_bus import message_bus
 from agent_factory import create_agent
+from team_state import list_all_agents, cleanup_stale_heartbeats
+
+# ── colours ──
+DIM = "\033[2m"
+YELLOW = "\033[93m"
+GREEN = "\033[92m"
+CYAN = "\033[96m"
+RESET = "\033[0m"
 
 mainAgent = create_agent(
     name="mainAgent",
@@ -16,37 +25,58 @@ mainAgent = create_agent(
 )
 
 
+# ── status bar ──
+def render_status_bar():
+    agents = list_all_agents()
+    online = [a for a in agents if a["status"] == "online"]
+    offline = [a for a in agents if a["status"] == "offline"]
+
+    parts = []
+    for a in online:
+        parts.append(f"{GREEN}●{RESET} {a['name']}({a['role']})")
+    for a in offline:
+        parts.append(f"{DIM}○ {a['name']}({a['role']}){RESET}")
+
+    bar = "  ".join(parts) if parts else f"{DIM}(no agents){RESET}"
+    sys.stdout.write(f"{DIM}─── agents: {bar} {DIM}───{RESET}\n")
+    sys.stdout.flush()
+
+
 if __name__ == "__main__":
+    # Clean up heartbeat files from previous runs whose processes died
+    cleanup_stale_heartbeats()
+
+    import agent as _agent_mod
+
+    _agent_mod.on_agent_output_done = render_status_bar
+
     thread = threading.Thread(
         target=mainAgent.run_loop,
         args=(),
         daemon=True,
     )
     thread.start()
-    print(
-        f"\033[93m[System]: 欢迎进入多 Agent 流式聊天室！输入 'quit' 或 'exit' 退出。"
-    )
-    print("-" * 60)
+
+    print(f"{YELLOW}nanoAgent 聊天室{RESET}")
+    print(f"{DIM}直接输入文字和 leader 对话，leader 会自动路由给合适的 agent。{RESET}")
+    print(f"{DIM}输入 quit 或 exit 退出。{RESET}")
+    print()
 
     while True:
         try:
-            # 用户输入阶段：此时后台没有 Agent 在运行，保证输入框干净
-            user_input = input(f"\033[93m[User]: ")
+            render_status_bar()
+            user_input = input(f"{CYAN}> {RESET}")
 
             if user_input.strip().lower() in ["quit", "exit"]:
-                print("-" * 60)
                 break
 
             if not user_input.strip():
                 continue
+
             message_bus.send(None, "user", "mainAgent", user_input)
-            # 触发 Agent 处理阶段
 
         except KeyboardInterrupt:
             print()
-            print("-" * 60)
-            print(f"\033[93m[System]: 检测到中断，退出聊天室。")
             break
         except Exception as e:
-            print("-" * 60)
-            print(f"\033[93m[System]: 发生错误: {e}")
+            print(f"{YELLOW}[error]: {e}{RESET}")

@@ -1,13 +1,16 @@
 from client import client
 import time, json, threading
-import json
 from agent_logger import AgentLogger, step
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
 import sys
+from team_state import touch_heartbeat
 
 print_lock = threading.Lock()
+
+# callback set by the entrypoint to refresh UI after agent output
+on_agent_output_done = None
 
 
 class Agent:
@@ -31,15 +34,24 @@ class Agent:
             max_tokens,
             max_context_tokens,
         )
-        self.agent_colors = [
-            "\033[96m",  # 青色
-            "\033[95m",  # 洋红色
+        name_palette = [
+            "\033[96m",  # cyan
+            "\033[92m",  # green
+            "\033[94m",  # blue
+            "\033[93m",  # yellow
+            "\033[91m",  # red
+            "\033[95m",  # magenta
         ]
+        idx = sum(ord(c) for c in name) % len(name_palette)
+        self.name_color = name_palette[idx]
+        self.text_color = "\033[97m"
+        self.reset_color = "\033[0m"
         self.tools = tools
         self.logger = AgentLogger(name)
 
     def run_loop(self):
         while True:
+            touch_heartbeat(name=self.context.name, role=self.context.role)
             message = message_bus.read_inbox(self.context, self.context.name)
             if not message:
                 time.sleep(3)
@@ -123,7 +135,7 @@ class Agent:
         tool_calls_dict = {}
         with print_lock:
             sys.stdout.write(
-                f"{self.agent_colors[0]}[{self.context.name}]: {self.agent_colors[1]}"
+                f"\n{self.name_color}[{self.context.name}]: {self.text_color}"
             )
             sys.stdout.flush()
             for chunk in stream:
@@ -169,6 +181,12 @@ class Agent:
 
                 if choice.finish_reason:
                     break
+
+            sys.stdout.write(f"{self.reset_color}\n")
+            sys.stdout.flush()
+
+        if on_agent_output_done:
+            on_agent_output_done()
 
         tool_calls_list = build_tool_calls(tool_calls_dict)
 

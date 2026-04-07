@@ -4,6 +4,7 @@ import time
 from config import INBOX_DIR
 from tool import Tool
 from agent_context import AgentContext
+from team_state import is_online
 
 VALID_MSG_TYPES = [
     "message",
@@ -28,6 +29,14 @@ class MessageBus:
     ) -> str:
         if msg_type not in VALID_MSG_TYPES:
             return f"Error: Invalid type '{msg_type}'. Valid: {VALID_MSG_TYPES}"
+
+        # Block sending to offline agents (except "user" target which is special)
+        if to != "user" and not is_online(to):
+            return (
+                f"Error: '{to}' is offline. "
+                f"Use `spawn` to start '{to}' first, or pick another online agent."
+            )
+
         msg = {
             "type": msg_type,
             "sender": sender,

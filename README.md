@@ -39,13 +39,27 @@ python cmd/main.py
 
 ## 使用方式
 
-启动后，用户输入会进入 `mainAgent` 收件箱，随后由后台线程处理。
+启动后直接输入文字即可。所有消息默认发给 leader agent（`mainAgent`），由它分析语义后决定：
 
-示例提示词：
+- 自己处理（代码编辑、shell 命令等）
+- 转发给已有的在线 Agent
+- spawn 一个新的专业 Agent 来处理
 
-- `请先 members 看看团队成员，然后帮我生成一个项目摘要到 notes.md`
-- `先 spawn 一个 reviewer 角色，再让它检查 tool_bash.py 的安全风险`
-- `加载 code-review skill 后，审查最近修改并给出修复建议`
+终端会在每次输入前显示**在线状态栏**，例如：
+
+```
+─── agents: ● mainAgent(leader)  ● reviewer(code-review)  ○ wangzai(dog) ───
+>
+```
+
+- `●` 绿色 = 在线（心跳活跃）
+- `○` 灰色 = 离线
+
+示例对话：
+
+- `帮我检查 tool_bash.py 有没有安全风险` → leader 可能 spawn 一个 reviewer 来处理
+- `给 reviewer 说一下关注命令注入问题` → leader 会转发给 reviewer
+- `列出当前目录的文件` → leader 自己用 bash 工具处理
 
 ## 项目结构（与当前代码一致）
 

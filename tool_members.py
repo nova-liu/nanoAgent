@@ -1,13 +1,14 @@
-from config import TEAM_CONFIG
+import json
 from tool import Tool
 from agent_context import AgentContext
+from team_state import list_online_agents
 
 NAME = "members"
 members_tool = {
     "type": "function",
     "function": {
         "name": NAME,
-        "description": "List all teammates with their roles and statuses.",
+        "description": "List all ONLINE teammates with their roles. Only shows agents that are currently running and reachable.",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -18,7 +19,10 @@ members_tool = {
 
 
 def member_names(agent_context: AgentContext) -> str:
-    return ", ".join([m["name"] for m in TEAM_CONFIG["members"]])
+    agents = list_online_agents()
+    if not agents:
+        return "No agents are online."
+    return json.dumps(agents, ensure_ascii=False)
 
 
 members_tool_instance = Tool(name=NAME, content=members_tool, function=member_names)
