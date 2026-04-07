@@ -9,7 +9,7 @@ def create_agent(
     role: str,
     profile: str,
     extra_registry: dict | None = None,
-    model: str = "doubao-seed-2-0-code-preview-260215",
+    model: str = "doubao-seed-2-0-mini-260215",
     max_tokens: int = 8000,
     max_context_tokens: int = 1600,
 ):
