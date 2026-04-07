@@ -1,0 +1,28 @@
+<svg width="320" height="120" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .text { font: 600 28px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; fill: #111; }
+    .sub { font: 400 12px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; fill: #666; }
+  </style>
+
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="white"/>
+
+  <!-- Orbit -->
+  <circle cx="60" cy="60" r="28" stroke="#111" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
+
+  <!-- Arrow (loop) -->
+  <path d="M 88 60 
+           A 28 28 0 1 1 59 32" 
+        stroke="#111" 
+        stroke-width="2" 
+        fill="none"/>
+
+  <polygon points="59,28 54,36 64,36" fill="#111"/>
+
+  <!-- Core (nano) -->
+  <circle cx="60" cy="60" r="6" fill="#2563eb"/>
+
+  <!-- Text -->
+  <text x="110" y="68" class="text">nanoAgent</text>
+  <text x="110" y="88" class="sub">just the loop</text>
+</svg>

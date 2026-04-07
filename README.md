@@ -1,5 +1,7 @@
 # nanoAgent
 
+![logo](docs/screenshots/logo.svg)
+
 A multi-agent terminal collaboration experiment built on OpenAI-compatible Chat Completions.
 
 This version focuses on three goals:
