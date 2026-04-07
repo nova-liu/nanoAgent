@@ -1,34 +1,18 @@
 import threading
 import sys
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
+
 from tool_sub_agent_task import sub_agent_task_tool_instance
 from tool_spawn import spawn_tool_instance
 from tool_message_bus import message_bus
 from agent_factory import create_agent
 from events import subscribe, Event, IDLE, THINKING, ACTING
 
-# ── colours ──
-DIM = "\033[2m"
-BOLD = "\033[1m"
-YELLOW = "\033[93m"
-GREEN = "\033[92m"
-CYAN = "\033[96m"
-RED = "\033[91m"
-RESET = "\033[0m"
-
-# per-agent colour palette (assigned by name hash)
-_NAME_PALETTE = [
-    "\033[96m",  # cyan
-    "\033[92m",  # green
-    "\033[94m",  # blue
-    "\033[93m",  # yellow
-    "\033[91m",  # red
-    "\033[95m",  # magenta
-]
-
-
-def _agent_color(name: str) -> str:
-    return _NAME_PALETTE[sum(ord(c) for c in name) % len(_NAME_PALETTE)]
+USER_TAG = "[USER]"
+OPS_TAG = "[OPS]"
+SYSTEM_TAG = "[SYS]"
 
 
 # ── shared write lock — all terminal output goes through this ──
@@ -40,6 +24,9 @@ _agent_states: dict[str, str] = {}
 # track which agent is currently mid-stream (to collapse thinking line)
 _streaming_agent: str | None = None
 
+# prompt session created at runtime, used for toolbar refreshes
+_session: PromptSession | None = None
+
 
 def _write(*parts: str):
     """Atomic write to stdout."""
@@ -50,7 +37,7 @@ def _write(*parts: str):
 
 # ── status bar ──
 
-def render_status_bar():
+def _build_status_text() -> str:
     agents = message_bus.list_agents()
     parts = []
     for a in agents:
@@ -59,25 +46,31 @@ def render_status_bar():
         state = _agent_states.get(name, IDLE)
         qn = message_bus.pending_count(name)
 
-        color = _agent_color(name)
-
-        # state indicator
         if state == THINKING:
-            indicator = f"{YELLOW}◉{RESET}"
+            indicator = "T"
         elif state == ACTING:
-            indicator = f"{RED}⚡{RESET}"
+            indicator = "A"
         else:
-            indicator = f"{GREEN}●{RESET}"
+            indicator = "I"
 
-        label = f"{indicator} {color}{name}{RESET}({DIM}{role}{RESET})"
+        label = f"[{indicator}] {name}({role})"
         if state != IDLE:
-            label += f" {DIM}{state}{RESET}"
+            label += f" {state}"
         if qn > 0:
-            label += f" {YELLOW}q={qn}{RESET}"
+            label += f" q={qn}"
         parts.append(label)
 
-    bar = "  ".join(parts) if parts else f"{DIM}(no agents){RESET}"
-    _write(f"\n{DIM}─── {bar} {DIM}───{RESET}\n")
+    return "  ".join(parts) if parts else "(no agents)"
+
+
+def bottom_toolbar():
+    return f" {_build_status_text()} "
+
+
+def render_status_bar():
+    _write(f"--- {_build_status_text()} ---\n")
+    if _session and _session.app and _session.app.is_running:
+        _session.app.invalidate()
 
 
 # ── event handler (subscriber) ──
@@ -86,7 +79,6 @@ def on_event(event: Event):
     """Route agent events to the correct terminal lane."""
     global _streaming_agent
     name = event.agent
-    color = _agent_color(name)
     kind = event.kind
     d = event.data
 
@@ -94,22 +86,24 @@ def on_event(event: Event):
     if kind == "state_changed":
         _agent_states[name] = d["state"]
 
-        if d["state"] == THINKING:
-            # Show thinking indicator (will be overwritten by stream_start)
-            _write(f"\n{color}[{name}]{RESET} {DIM}thinking…{RESET}")
-        elif d["state"] == IDLE:
+        # Keep state visualization in the bottom toolbar; only print a snapshot
+        # when agent becomes idle so scrollback has milestones.
+        if d["state"] == IDLE:
             render_status_bar()
+        elif d["state"] == THINKING:
+            _write(f"{OPS_TAG} {name} thinking...\n")
+        elif _session and _session.app and _session.app.is_running:
+            _session.app.invalidate()
         return
 
     # ── stream lifecycle ──
     if kind == "stream_start":
         _streaming_agent = name
-        # Erase the thinking line, then print [name]: header
         is_main = (name == "mainAgent")
         if is_main:
-            _write(f"\r\033[K\n{color}{BOLD}[{name}]:{RESET} ")
+            _write(f"\n{USER_TAG} [{name}]: ")
         else:
-            _write(f"\r\033[K\n{DIM}{color}[{name}]:{RESET}{DIM} ")
+            _write(f"\n{OPS_TAG} [{name}]: ")
         return
 
     if kind == "stream_delta":
@@ -119,39 +113,34 @@ def on_event(event: Event):
         return
 
     if kind == "stream_end":
-        is_main = (name == "mainAgent")
-        if not is_main:
-            _write(f"{RESET}")   # close DIM for non-main agents
-        _write(f"{RESET}\n")
+        _write("\n")
         _streaming_agent = None
         return
 
     # ── tool calls (ops lane — always dimmed) ──
     if kind == "tool_start":
         _write(
-            f"  {color}↳ {d['tool']}{RESET}"
-            f" {DIM}{d['args']}{RESET}\n"
+            f"{OPS_TAG} -> {d['tool']}"
+            f" {d['args']}\n"
         )
         return
 
     if kind == "tool_end":
         _write(
-            f"  {color}  ← {RESET}"
-            f"{DIM}{d['result']}{RESET}\n"
+            f"{OPS_TAG} <- {d['result']}\n"
         )
         return
 
     # ── errors ──
     if kind == "error":
         _write(
-            f"\n{color}[{name}]{RESET}"
-            f" {RED}ERROR:{RESET}\n{DIM}{d['traceback']}{RESET}\n"
+            f"\n{OPS_TAG} [{name}] ERROR:\n{d['traceback']}\n"
         )
         return
 
     # ── bus events (optional, for future use) ──
     if kind == "bus_event":
-        _write(f"{DIM}  [{d.get('summary', '')}]{RESET}\n")
+        _write(f"{OPS_TAG} [{d.get('summary', '')}]\n")
         return
 
 
@@ -182,35 +171,41 @@ if __name__ == "__main__":
     )
     thread.start()
 
-    print(f"{YELLOW}nanoAgent 聊天室{RESET}")
-    print(f"{DIM}直接输入文字和 leader 对话，leader 会自动路由给合适的 agent。{RESET}")
-    print(f"{DIM}输入 quit 或 exit 退出。{RESET}")
+    print("nanoAgent 聊天室")
+    print("直接输入文字和 leader 对话，leader 会自动路由给合适的 agent。")
+    print("Ctrl+C 清空输入，Ctrl+D 或输入 quit 退出。")
 
-    render_status_bar()
+    _session = PromptSession()
 
-    while True:
-        try:
-            user_input = input(f"{CYAN}> {RESET}")
-
-            if user_input.strip().lower() in ["quit", "exit"]:
-                break
-
-            if not user_input.strip():
-                continue
-
-            # Send and give immediate receipt
-            qn = message_bus.pending_count("mainAgent")
-            message_bus.send(None, to="mainAgent", content=user_input)
-
-            state = _agent_states.get("mainAgent", IDLE)
-            if state != IDLE:
-                _write(
-                    f"{DIM}  ⏳ mainAgent is {state}, "
-                    f"message queued (position {qn + 1}){RESET}\n"
+    with patch_stdout():
+        while True:
+            try:
+                user_input = _session.prompt(
+                    "> ",
+                    bottom_toolbar=bottom_toolbar,
                 )
 
-        except KeyboardInterrupt:
-            print()
-            break
-        except Exception as e:
-            _write(f"{YELLOW}[error]: {e}{RESET}\n")
+                if user_input.strip().lower() in ["quit", "exit"]:
+                    break
+
+                if not user_input.strip():
+                    continue
+
+                # Send and give immediate receipt
+                qn = message_bus.pending_count("mainAgent")
+                message_bus.send(None, to="mainAgent", content=user_input)
+
+                state = _agent_states.get("mainAgent", IDLE)
+                if state != IDLE:
+                    _write(
+                        f"{SYSTEM_TAG} mainAgent is {state}, "
+                        f"message queued (position {qn + 1})\n"
+                    )
+
+            except KeyboardInterrupt:
+                # Keep the app running; clear current input line.
+                continue
+            except EOFError:
+                break
+            except Exception as e:
+                _write(f"[error]: {e}\n")
