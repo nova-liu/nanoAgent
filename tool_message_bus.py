@@ -1,80 +1,133 @@
-from pathlib import Path
+"""
+Thread-safe in-memory message bus with per-agent queues.
+
+Each agent has a Queue.  Messages are delivered instantly (no file I/O).
+The bus is a process-wide singleton and the **single source of truth**
+for which agents are online — registered = online, no heartbeat files.
+"""
+
 import json
+import threading
 import time
-from config import INBOX_DIR
+from queue import Queue, Empty
 from tool import Tool
 from agent_context import AgentContext
-from team_state import is_online
-
-VALID_MSG_TYPES = [
-    "message",
-    "shutdown",
-]
 
 
-# -- MessageBus: JSONL inbox per teammate --
 class MessageBus:
-    def __init__(self, inbox_dir: Path):
-        self.dir = inbox_dir
-        self.dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self):
+        self._queues: dict[str, Queue] = {}
+        self._roles: dict[str, str] = {}       # name -> role
+        self._lock = threading.Lock()
+
+    # ── registration (online / offline) ──
+
+    def register(self, name: str, role: str = "unknown"):
+        """Mark *name* as online and create its inbox queue."""
+        with self._lock:
+            if name not in self._queues:
+                self._queues[name] = Queue()
+            self._roles[name] = role
+
+    def unregister(self, name: str):
+        """Mark *name* as offline."""
+        with self._lock:
+            self._queues.pop(name, None)
+            self._roles.pop(name, None)
+
+    def is_online(self, name: str) -> bool:
+        with self._lock:
+            return name in self._roles
+
+    def list_agents(self) -> list[dict]:
+        """Return every registered agent with its role."""
+        with self._lock:
+            return [
+                {"name": n, "role": r, "status": "online"}
+                for n, r in sorted(self._roles.items())
+            ]
+
+    # ── messaging ──
 
     def send(
         self,
-        agent_context: AgentContext,
+        agent_context: AgentContext | None,
         to: str,
         content: str,
-        msg_type: str = "message",
     ) -> str:
-        if msg_type not in VALID_MSG_TYPES:
-            return f"Error: Invalid type '{msg_type}'. Valid: {VALID_MSG_TYPES}"
-
-        # Block sending to offline agents (except "user" / "mainAgent" from CLI)
-        if to != "user" and not is_online(to):
+        if not self.is_online(to):
             return (
-                f"Error: '{to}' is offline. "
-                f"Use `spawn` to start '{to}' first, or pick another online agent."
+                f"Error: \"{to}\" is offline. "
+                f"Use spawn to start it first, or pick another online agent."
             )
 
-        # Auto-derive sender from context
         sender = "user"
         if agent_context and hasattr(agent_context, "name"):
             sender = agent_context.name
 
         msg = {
-            "type": msg_type,
             "sender": sender,
             "content": content,
             "timestamp": time.time(),
         }
-        inbox_path = self.dir / f"{to}.jsonl"
-        with open(inbox_path, "a") as f:
-            f.write(json.dumps(msg) + "\n")
-        return f"Sent {msg_type} to {to}"
+        with self._lock:
+            q = self._queues.get(to)
+        if q is None:
+            return f"Error: \"{to}\" went offline."
+        q.put(msg)
+        return f"Sent message to {to}"
 
-    def read_inbox(self, agent_context: AgentContext, name: str) -> str:
-        inbox_path = self.dir / f"{name}.jsonl"
-        if not inbox_path.exists():
+    def recv(self, name: str, timeout: float = 0) -> str:
+        """
+        Read all pending messages for *name*.
+        Returns JSON array string, or empty string if nothing.
+        If timeout > 0, blocks up to that many seconds for the first message.
+        """
+        with self._lock:
+            q = self._queues.get(name)
+        if q is None:
             return ""
         messages = []
-        for line in inbox_path.read_text().strip().splitlines():
-            if line:
-                msg = json.loads(line)
-                messages.append(msg)
-        ## clear inbox after reading
-        inbox_path.write_text("")
-        if len(messages) == 0:
+
+        # Optionally block for first message
+        if timeout > 0 and q.empty():
+            try:
+                first = q.get(timeout=timeout)
+                messages.append(first)
+            except Empty:
+                return ""
+
+        # Drain remaining
+        while True:
+            try:
+                messages.append(q.get_nowait())
+            except Empty:
+                break
+
+        if not messages:
             return ""
-        return json.dumps(messages)
+        return json.dumps(messages, ensure_ascii=False)
+
+    def pending_count(self, name: str) -> int:
+        with self._lock:
+            q = self._queues.get(name)
+        return q.qsize() if q else 0
 
 
-message_bus = MessageBus(INBOX_DIR)
+# Singleton
+message_bus = MessageBus()
 
+
+# ── Tool definitions ──
 
 send_message_tool = {
     "type": "function",
     "function": {
         "name": "send_message",
-        "description": "Send a message to an online agent. Sender is auto-filled from your identity. Will fail if recipient is offline — use spawn first.",
+        "description": (
+            "Send a message to an online agent. "
+            "Sender is auto-filled. Will FAIL if recipient is offline — spawn first."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -86,25 +139,6 @@ send_message_tool = {
     },
 }
 
-read_inbox_tool = {
-    "type": "function",
-    "function": {
-        "name": "read_inbox",
-        "description": "Read and clear the inbox for a teammate.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Teammate name"},
-            },
-            "required": ["name"],
-        },
-    },
-}
-
 send_message_tool_instance = Tool(
     name="send_message", content=send_message_tool, function=message_bus.send
-)
-
-read_inbox_tool_instance = Tool(
-    name="read_inbox", content=read_inbox_tool, function=message_bus.read_inbox
 )

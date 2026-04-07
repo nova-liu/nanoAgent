@@ -1,11 +1,10 @@
 from client import client
-import time, json, threading
+import time, json, threading, traceback
 from agent_logger import AgentLogger, step
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
 import sys
-from team_state import touch_heartbeat
 
 print_lock = threading.Lock()
 
@@ -49,18 +48,47 @@ class Agent:
         self.tools = tools
         self.logger = AgentLogger(name)
 
+    def _show_thinking(self):
+        """Display a thinking… indicator for this agent."""
+        with print_lock:
+            sys.stdout.write(
+                f"\n{self.name_color}[{self.context.name}]{self.reset_color}"
+                f" \033[2mthinking…\033[0m"
+            )
+            sys.stdout.flush()
+        self._thinking = True
+
+    def _clear_thinking(self):
+        """Erase the thinking indicator if it's still visible."""
+        if getattr(self, "_thinking", False):
+            with print_lock:
+                sys.stdout.write("\r\033[K")
+                sys.stdout.flush()
+            self._thinking = False
+
     def run_loop(self):
+        message_bus.register(self.context.name, self.context.role)
         while True:
-            touch_heartbeat(name=self.context.name, role=self.context.role)
-            message = message_bus.read_inbox(self.context, self.context.name)
-            if not message:
-                time.sleep(3)
+            raw = message_bus.recv(self.context.name, timeout=3)
+            if not raw:
                 continue
             self.context.messages.append(
-                {"role": "user", "content": f"<inbox>{message}</inbox>"}
+                {"role": "user", "content": f"<inbox>{raw}</inbox>"}
             )
 
-            self.one_task()
+            self._show_thinking()
+
+            try:
+                self.one_task()
+            except Exception:
+                self._clear_thinking()
+                tb = traceback.format_exc()
+                with print_lock:
+                    sys.stdout.write(
+                        f"\n{self.name_color}[{self.context.name}]{self.reset_color}"
+                        f" \033[91mERROR:\033[0m\n\033[2m{tb}\033[0m\n"
+                    )
+                    sys.stdout.flush()
 
     def one_task(self):
         while True:
@@ -79,6 +107,9 @@ class Agent:
                 break
 
             self.handle_tool_calls(tool_calls_list)
+
+            # Show thinking again before the next LLM round
+            self._show_thinking()
 
     def handle_tool_calls(self, tool_calls_list):
         for tc in tool_calls_list:
@@ -164,6 +195,11 @@ class Agent:
         role = ""
         tool_calls_dict = {}
         with print_lock:
+            # Clear "thinking…" line if it's still showing
+            if getattr(self, "_thinking", False):
+                sys.stdout.write("\r\033[K")
+                sys.stdout.flush()
+                self._thinking = False
             sys.stdout.write(
                 f"\n{self.name_color}[{self.context.name}]: {self.text_color}"
             )

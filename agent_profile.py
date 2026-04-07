@@ -4,7 +4,7 @@ from tool_write_file import write_file_tool_instance
 from tool_read_file import read_file_tool_instance
 from tool_edit_file import edit_file_tool_instance
 from tool_members import members_tool_instance
-from tool_message_bus import send_message_tool_instance, read_inbox_tool_instance
+from tool_message_bus import send_message_tool_instance
 from tool_compact import compact_tool_instance
 from tool_skill import skill, skill_tool_instance
 
@@ -15,7 +15,6 @@ BASE_TOOL_REGISTRY = {
     "edit_file": edit_file_tool_instance,
     "members": members_tool_instance,
     "send_message": send_message_tool_instance,
-    "read_inbox": read_inbox_tool_instance,
     "compact": compact_tool_instance,
     "get_skill": skill_tool_instance,
 }
@@ -30,7 +29,6 @@ PROFILE_TOOL_NAMES = {
         "members",
         "spawn",
         "send_message",
-        "read_inbox",
         "compact",
         "get_skill",
     ],
@@ -42,7 +40,6 @@ PROFILE_TOOL_NAMES = {
         "edit_file",
         "members",
         "send_message",
-        "read_inbox",
         "compact",
         "get_skill",
     ],
@@ -51,9 +48,6 @@ PROFILE_TOOL_NAMES = {
         "write_file",
         "read_file",
         "edit_file",
-        "members",
-        "send_message",
-        "read_inbox",
         "get_skill",
     ],
 }
@@ -90,21 +84,27 @@ Skills available:
     if profile == "spawned":
         return f"""
 Your name is {{name}} and your role is {{role}}.
-You are a sub-agent spawned by the main agent to assist with a specific task.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
+You are a persistent specialist agent running in your own thread at {WORKDIR}.
+
+You were spawned by the leader (mainAgent) to handle a specific domain.
+Messages arrive in your inbox automatically — just process them.
+Use `send_message` to reply to mainAgent or talk to other online agents.
+Use `members` to see who is currently online.
+Use `sub_agent_task_tool` to delegate quick one-off subtasks.
+Use `get_skill` to load specialized knowledge before tackling unfamiliar topics.
 Skills available:
 {skill_descriptions}.
-Use the sub_agent_task_tool to delegate exploration or subtasks.
 """
 
     if profile == "delegated":
         return f"""
 Your name is {{name}} and your role is {{role}}.
-You are a sub-agent created by the main agent to assist with specific tasks.
-Use load_skill to access specialized knowledge before tackling unfamiliar topics.
+You are a temporary sub-agent created to handle a single task synchronously.
+Your result will be returned directly to the caller — no message bus needed.
+Focus on the task, produce a clear answer, then stop.
+Use `get_skill` to load specialized knowledge before tackling unfamiliar topics.
 Skills available:
 {skill_descriptions}.
-You can't spawn new agents, and you don't have access to the sub_agent_task_tool. Focus on the task given by the main agent and report back the results.
 """
 
     raise ValueError(f"Unknown profile '{profile}'")

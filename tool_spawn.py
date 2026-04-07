@@ -3,7 +3,7 @@ import threading
 from tool_sub_agent_task import sub_agent_task_tool_instance
 from agent_context import AgentContext
 from agent_factory import create_agent
-from team_state import is_online, touch_heartbeat
+from tool_message_bus import message_bus
 
 NAME = "spawn"
 
@@ -25,10 +25,11 @@ spawn_tool = {
 
 
 def spawn(agent_context: AgentContext, name: str, role: str) -> str:
-    if is_online(name):
+    if message_bus.is_online(name):
         return f"Error: '{name}' is already online"
 
-    touch_heartbeat(name=name, role=role)
+    # Pre-register so the agent is immediately reachable via send_message
+    message_bus.register(name, role)
 
     agent = create_agent(
         name=name,

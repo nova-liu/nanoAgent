@@ -5,7 +5,6 @@ from tool_sub_agent_task import sub_agent_task_tool_instance
 from tool_spawn import spawn_tool_instance
 from tool_message_bus import message_bus
 from agent_factory import create_agent
-from team_state import list_all_agents, cleanup_stale_heartbeats
 
 # ── colours ──
 DIM = "\033[2m"
@@ -27,15 +26,11 @@ mainAgent = create_agent(
 
 # ── status bar ──
 def render_status_bar():
-    agents = list_all_agents()
-    online = [a for a in agents if a["status"] == "online"]
-    offline = [a for a in agents if a["status"] == "offline"]
+    agents = message_bus.list_agents()
 
     parts = []
-    for a in online:
+    for a in agents:
         parts.append(f"{GREEN}●{RESET} {a['name']}({a['role']})")
-    for a in offline:
-        parts.append(f"{DIM}○ {a['name']}({a['role']}){RESET}")
 
     bar = "  ".join(parts) if parts else f"{DIM}(no agents){RESET}"
     sys.stdout.write(f"{DIM}─── agents: {bar} {DIM}───{RESET}\n")
@@ -43,8 +38,8 @@ def render_status_bar():
 
 
 if __name__ == "__main__":
-    # Clean up heartbeat files from previous runs whose processes died
-    cleanup_stale_heartbeats()
+    # Pre-register mainAgent queue so user messages arrive before run_loop starts
+    message_bus.register("mainAgent", "leader")
 
     import agent as _agent_mod
 

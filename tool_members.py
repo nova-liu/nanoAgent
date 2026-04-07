@@ -1,7 +1,7 @@
 import json
 from tool import Tool
 from agent_context import AgentContext
-from team_state import list_online_agents
+from tool_message_bus import message_bus
 
 NAME = "members"
 members_tool = {
@@ -19,7 +19,7 @@ members_tool = {
 
 
 def member_names(agent_context: AgentContext) -> str:
-    agents = list_online_agents()
+    agents = message_bus.list_agents()
     if not agents:
         return "No agents are online."
     return json.dumps(agents, ensure_ascii=False)
