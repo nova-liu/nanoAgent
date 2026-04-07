@@ -86,16 +86,14 @@ class Agent:
             args_brief = json.dumps(args, ensure_ascii=False)
             if len(args_brief) > 120:
                 args_brief = args_brief[:117] + "..."
-            emit("tool_start", self.context.name,
-                 tool=tool_name, args=args_brief)
+            emit("tool_start", self.context.name, tool=tool_name, args=args_brief)
 
             result = self._use_tool(tool_name, args)
 
             result_brief = result.replace("\n", " ")
             if len(result_brief) > 120:
                 result_brief = result_brief[:117] + "..."
-            emit("tool_end", self.context.name,
-                 tool=tool_name, result=result_brief)
+            emit("tool_end", self.context.name, tool=tool_name, result=result_brief)
 
             self.context.messages.append(
                 {
@@ -174,7 +172,9 @@ class Agent:
                     idx = tc.index
                     if idx not in tool_calls_dict:
                         tool_calls_dict[idx] = {
-                            "id": "", "name": "", "arguments": "",
+                            "id": "",
+                            "name": "",
+                            "arguments": "",
                         }
                     if tc.id:
                         tool_calls_dict[idx]["id"] = tc.id

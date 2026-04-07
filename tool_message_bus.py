@@ -17,7 +17,7 @@ from agent_context import AgentContext
 class MessageBus:
     def __init__(self):
         self._queues: dict[str, Queue] = {}
-        self._roles: dict[str, str] = {}       # name -> role
+        self._roles: dict[str, str] = {}  # name -> role
         self._lock = threading.Lock()
 
     # ── registration (online / offline) ──
@@ -57,7 +57,7 @@ class MessageBus:
     ) -> str:
         if not self.is_online(to):
             return (
-                f"Error: \"{to}\" is offline. "
+                f'Error: "{to}" is offline. '
                 f"Use spawn to start it first, or pick another online agent."
             )
 
@@ -73,7 +73,7 @@ class MessageBus:
         with self._lock:
             q = self._queues.get(to)
         if q is None:
-            return f"Error: \"{to}\" went offline."
+            return f'Error: "{to}" went offline.'
         q.put(msg)
         return f"Sent message to {to}"
 

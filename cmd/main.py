@@ -1,8 +1,10 @@
 import threading
-import sys
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
+from textual import on
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, VerticalScroll
+from textual.reactive import reactive
+from textual.widgets import Input, Static
 
 from tool_sub_agent_task import sub_agent_task_tool_instance
 from tool_spawn import spawn_tool_instance
@@ -11,137 +13,270 @@ from agent_factory import create_agent
 from events import subscribe, Event, IDLE, THINKING, ACTING
 
 USER_TAG = "[USER]"
+AGENT_TAG = "[AGENT]"
 OPS_TAG = "[OPS]"
 SYSTEM_TAG = "[SYS]"
+MAIN_AGENT_NAME = "mainAgent"
 
 
-# ── shared write lock — all terminal output goes through this ──
-_io_lock = threading.Lock()
-
-# track per-agent state for status bar
-_agent_states: dict[str, str] = {}
-
-# track which agent is currently mid-stream (to collapse thinking line)
-_streaming_agent: str | None = None
-
-# prompt session created at runtime, used for toolbar refreshes
-_session: PromptSession | None = None
+class MessageBubble(Static):
+    def __init__(self, text: str, classes: str = ""):
+        super().__init__(text, classes=classes)
 
 
-def _write(*parts: str):
-    """Atomic write to stdout."""
-    with _io_lock:
-        sys.stdout.write("".join(parts))
-        sys.stdout.flush()
+class NanoAgentIM(App):
+    TITLE = "nanoAgent IM"
+    CSS = """
+    Screen {
+        layout: vertical;
+        background: #0d1117;
+        color: #f0f6fc;
+    }
 
+    #chat {
+        height: 1fr;
+        padding: 1 2;
+    }
 
-# ── status bar ──
+    .row {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+    }
 
-def _build_status_text() -> str:
-    agents = message_bus.list_agents()
-    parts = []
-    for a in agents:
-        name = a["name"]
-        role = a["role"]
-        state = _agent_states.get(name, IDLE)
-        qn = message_bus.pending_count(name)
+    .pad {
+        width: 1fr;
+    }
 
-        if state == THINKING:
-            indicator = "T"
-        elif state == ACTING:
-            indicator = "A"
-        else:
-            indicator = "I"
+    .bubble {
+        width: auto;
+        max-width: 70%;
+        padding: 0 1;
+        border: round #39424e;
+    }
 
-        label = f"[{indicator}] {name}({role})"
+    .agent-bubble {
+        background: #13233a;
+        color: #dbeafe;
+    }
+
+    .main-reply-bubble {
+        background: #1b3f2a;
+        color: #dcfce7;
+        border: round #59c28a;
+        text-style: bold;
+    }
+
+    .user-bubble {
+        background: #1f3b2e;
+        color: #dcfce7;
+    }
+
+    .ops-bubble {
+        background: #20242c;
+        color: #9ca3af;
+    }
+
+    .background-bubble {
+        background: #1b1f26;
+        color: #8b95a7;
+        border: round #2f3542;
+    }
+
+    .system-bubble {
+        background: #2a1e11;
+        color: #fde68a;
+    }
+
+    #status {
+        height: 1;
+        color: #93c5fd;
+        background: #111827;
+        padding: 0 1;
+    }
+
+    #input {
+        height: 3;
+        margin: 0 1;
+        border: round #2f3542;
+        background: #161b22;
+        color: #f0f6fc;
+    }
+    """
+
+    agent_states = reactive(dict)
+
+    def __init__(self):
+        super().__init__()
+        self._stream_buffers: dict[str, list[str]] = {}
+        self._run_thread: threading.Thread | None = None
+
+    def compose(self) -> ComposeResult:
+        yield VerticalScroll(id="chat")
+        yield Static("", id="status")
+        yield Input(
+            placeholder="Type a message, Enter to send. 'quit' to exit.", id="input"
+        )
+
+    def on_mount(self) -> None:
+        message_bus.register("mainAgent", "leader")
+        subscribe(self._on_event_from_agents)
+
+        self._run_thread = threading.Thread(target=mainAgent.run_loop, daemon=True)
+        self._run_thread.start()
+
+        self._add_system_message("nanoAgent IM started. mainAgent is online.")
+        self._refresh_status()
+        self.query_one("#input", Input).focus()
+
+    @on(Input.Submitted, "#input")
+    def submit_message(self, event: Input.Submitted) -> None:
+        text = event.value.strip()
+        event.input.value = ""
+        if not text:
+            return
+
+        if text.lower() in {"quit", "exit", "/quit"}:
+            self.exit()
+            return
+
+        self._add_user_message(text)
+        qn = message_bus.pending_count("mainAgent")
+        message_bus.send(None, to="mainAgent", content=text)
+
+        state = self.agent_states.get("mainAgent", IDLE)
         if state != IDLE:
-            label += f" {state}"
-        if qn > 0:
-            label += f" q={qn}"
-        parts.append(label)
+            self._add_ops_message(
+                f"{SYSTEM_TAG} mainAgent is {state}, queued at position {qn + 1}"
+            )
 
-    return "  ".join(parts) if parts else "(no agents)"
+        self._refresh_status()
 
+    def _on_event_from_agents(self, event: Event) -> None:
+        # Event callback runs on worker threads; schedule UI updates safely.
+        self.call_from_thread(self._handle_event_on_ui, event)
 
-def bottom_toolbar():
-    return f" {_build_status_text()} "
+    def _handle_event_on_ui(self, event: Event) -> None:
+        name = event.agent
+        kind = event.kind
+        data = event.data
+        is_main = name == MAIN_AGENT_NAME
 
+        if kind == "state_changed":
+            self.agent_states[name] = data.get("state", IDLE)
+            self._refresh_status()
+            return
 
-def render_status_bar():
-    _write(f"--- {_build_status_text()} ---\n")
-    if _session and _session.app and _session.app.is_running:
-        _session.app.invalidate()
+        if kind == "stream_start":
+            self._stream_buffers[name] = []
+            return
 
+        if kind == "stream_delta":
+            text = data.get("text", "")
+            if text:
+                self._stream_buffers.setdefault(name, []).append(text)
+            return
 
-# ── event handler (subscriber) ──
+        if kind == "stream_end":
+            content = "".join(self._stream_buffers.pop(name, []))
+            if content.strip():
+                if is_main:
+                    self._add_main_reply(name, content)
+                else:
+                    self._add_background_message(name, content)
+            return
 
-def on_event(event: Event):
-    """Route agent events to the correct terminal lane."""
-    global _streaming_agent
-    name = event.agent
-    kind = event.kind
-    d = event.data
+        if kind == "tool_start":
+            self._add_background_message(
+                name,
+                f"{OPS_TAG} -> {data.get('tool')} {data.get('args')}",
+            )
+            return
 
-    # ── state_changed ──
-    if kind == "state_changed":
-        _agent_states[name] = d["state"]
+        if kind == "tool_end":
+            self._add_background_message(name, f"{OPS_TAG} <- {data.get('result')}")
+            return
 
-        # Keep state visualization in the bottom toolbar; only print a snapshot
-        # when agent becomes idle so scrollback has milestones.
-        if d["state"] == IDLE:
-            render_status_bar()
-        elif d["state"] == THINKING:
-            _write(f"{OPS_TAG} {name} thinking...\n")
-        elif _session and _session.app and _session.app.is_running:
-            _session.app.invalidate()
-        return
+        if kind == "error":
+            self._add_background_message(
+                name, f"{OPS_TAG} ERROR: {data.get('traceback')}"
+            )
+            return
 
-    # ── stream lifecycle ──
-    if kind == "stream_start":
-        _streaming_agent = name
-        is_main = (name == "mainAgent")
-        if is_main:
-            _write(f"\n{USER_TAG} [{name}]: ")
+        if kind == "bus_event":
+            self._add_background_message(name, f"{OPS_TAG} {data.get('summary', '')}")
+            return
+
+    def _append_bubble(self, text: str, side: str, bubble_class: str) -> None:
+        chat = self.query_one("#chat", VerticalScroll)
+        bubble = MessageBubble(text, classes=f"bubble {bubble_class}")
+        pad = Static("", classes="pad")
+
+        if side == "right":
+            row = Horizontal(pad, bubble, classes="row")
         else:
-            _write(f"\n{OPS_TAG} [{name}]: ")
-        return
+            row = Horizontal(bubble, pad, classes="row")
 
-    if kind == "stream_delta":
-        text = d.get("text", "")
-        if text:
-            _write(text)
-        return
+        chat.mount(row)
+        chat.scroll_end(animate=False)
 
-    if kind == "stream_end":
-        _write("\n")
-        _streaming_agent = None
-        return
+    def _add_user_message(self, text: str) -> None:
+        self._append_bubble(f"user: {text}", side="right", bubble_class="user-bubble")
 
-    # ── tool calls (ops lane — always dimmed) ──
-    if kind == "tool_start":
-        _write(
-            f"{OPS_TAG} -> {d['tool']}"
-            f" {d['args']}\n"
+    def _add_agent_message(self, name: str, text: str) -> None:
+        self._append_bubble(
+            f"{name}: {text}",
+            side="left",
+            bubble_class="agent-bubble",
         )
-        return
 
-    if kind == "tool_end":
-        _write(
-            f"{OPS_TAG} <- {d['result']}\n"
+    def _add_main_reply(self, name: str, text: str) -> None:
+        self._append_bubble(
+            f"{name}: {text}",
+            side="left",
+            bubble_class="main-reply-bubble",
         )
-        return
 
-    # ── errors ──
-    if kind == "error":
-        _write(
-            f"\n{OPS_TAG} [{name}] ERROR:\n{d['traceback']}\n"
+    def _add_background_message(self, name: str, text: str) -> None:
+        self._append_bubble(
+            f"{name}: {text}",
+            side="left",
+            bubble_class="background-bubble",
         )
-        return
 
-    # ── bus events (optional, for future use) ──
-    if kind == "bus_event":
-        _write(f"{OPS_TAG} [{d.get('summary', '')}]\n")
-        return
+    def _add_ops_message(self, text: str) -> None:
+        self._append_bubble(text, side="left", bubble_class="ops-bubble")
+
+    def _add_system_message(self, text: str) -> None:
+        self._append_bubble(
+            f"{SYSTEM_TAG} {text}", side="left", bubble_class="system-bubble"
+        )
+
+    def _refresh_status(self) -> None:
+        agents = message_bus.list_agents()
+        parts = []
+        for item in agents:
+            name = item["name"]
+            role = item["role"]
+            state = self.agent_states.get(name, IDLE)
+            queue_count = message_bus.pending_count(name)
+
+            if state == THINKING:
+                indicator = "T"
+            elif state == ACTING:
+                indicator = "A"
+            else:
+                indicator = "I"
+
+            label = f"[{indicator}] {name}({role})"
+            if state != IDLE:
+                label += f" {state}"
+            if queue_count:
+                label += f" q={queue_count}"
+            parts.append(label)
+
+        status = "  ".join(parts) if parts else "(no agents online)"
+        self.query_one("#status", Static).update(status)
 
 
 # ── create mainAgent ──
@@ -158,54 +293,4 @@ mainAgent = create_agent(
 
 
 if __name__ == "__main__":
-    # Pre-register mainAgent queue so user messages arrive before run_loop starts
-    message_bus.register("mainAgent", "leader")
-
-    # Wire up event system
-    subscribe(on_event)
-
-    thread = threading.Thread(
-        target=mainAgent.run_loop,
-        args=(),
-        daemon=True,
-    )
-    thread.start()
-
-    print("nanoAgent 聊天室")
-    print("直接输入文字和 leader 对话，leader 会自动路由给合适的 agent。")
-    print("Ctrl+C 清空输入，Ctrl+D 或输入 quit 退出。")
-
-    _session = PromptSession()
-
-    with patch_stdout():
-        while True:
-            try:
-                user_input = _session.prompt(
-                    "> ",
-                    bottom_toolbar=bottom_toolbar,
-                )
-
-                if user_input.strip().lower() in ["quit", "exit"]:
-                    break
-
-                if not user_input.strip():
-                    continue
-
-                # Send and give immediate receipt
-                qn = message_bus.pending_count("mainAgent")
-                message_bus.send(None, to="mainAgent", content=user_input)
-
-                state = _agent_states.get("mainAgent", IDLE)
-                if state != IDLE:
-                    _write(
-                        f"{SYSTEM_TAG} mainAgent is {state}, "
-                        f"message queued (position {qn + 1})\n"
-                    )
-
-            except KeyboardInterrupt:
-                # Keep the app running; clear current input line.
-                continue
-            except EOFError:
-                break
-            except Exception as e:
-                _write(f"[error]: {e}\n")
+    NanoAgentIM().run()

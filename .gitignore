@@ -36,5 +36,4 @@ dist/
 # OS files
 .DS_Store
 .transcripts/
-.tasks/
-.team/
+agent_log.json

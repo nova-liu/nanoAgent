@@ -27,7 +27,7 @@ ACTING = "acting"
 @dataclass
 class Event:
     kind: str
-    agent: str          # agent name
+    agent: str  # agent name
     data: dict = field(default_factory=dict)
 
 

@@ -20,7 +20,10 @@ sub_agent_task_tool = {
         "parameters": {
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "Task description for the sub-agent"},
+                "prompt": {
+                    "type": "string",
+                    "description": "Task description for the sub-agent",
+                },
             },
             "required": ["prompt"],
         },
