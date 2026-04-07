@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#0b1220"/>
+  <rect x="30" y="30" width="1140" height="640" rx="14" fill="#111827" stroke="#334155"/>
+  <rect x="30" y="30" width="1140" height="48" rx="14" fill="#1f2937"/>
+  <text x="56" y="62" fill="#93c5fd" font-family="Menlo, Monaco, Consolas, monospace" font-size="22">nanoAgent IM - single user session</text>
+
+  <text x="60" y="130" fill="#f8fafc" font-family="Menlo, Monaco, Consolas, monospace" font-size="22">[I] nanoAgent(leader)</text>
+
+  <rect x="60" y="170" width="560" height="56" rx="10" fill="#183026"/>
+  <text x="80" y="205" fill="#dcfce7" font-family="Menlo, Monaco, Consolas, monospace" font-size="20">user: List files in the current directory</text>
+
+  <rect x="60" y="245" width="440" height="46" rx="10" fill="#1f2937"/>
+  <text x="80" y="275" fill="#cbd5e1" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">[SYS] sent to nanoAgent</text>
+
+  <rect x="60" y="310" width="930" height="132" rx="10" fill="#153327" stroke="#4ade80"/>
+  <text x="80" y="345" fill="#dcfce7" font-family="Menlo, Monaco, Consolas, monospace" font-size="20">nanoAgent: Listed directory files. Total: 26 entries.</text>
+  <text x="80" y="380" fill="#bbf7d0" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">- agent.py</text>
+  <text x="80" y="410" fill="#bbf7d0" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">- cmd/main.py</text>
+
+  <rect x="60" y="586" width="1080" height="52" rx="10" fill="#0f172a" stroke="#334155"/>
+  <text x="80" y="620" fill="#94a3b8" font-family="Menlo, Monaco, Consolas, monospace" font-size="20">> Type a message and press Enter. Use /help for commands</text>
+</svg>

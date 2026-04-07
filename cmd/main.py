@@ -16,7 +16,7 @@ USER_TAG = "[USER]"
 AGENT_TAG = "[AGENT]"
 OPS_TAG = "[OPS]"
 SYSTEM_TAG = "[SYS]"
-MAIN_AGENT_NAME = "mainAgent"
+MAIN_AGENT_NAME = "nanoAgent"
 
 
 class MessageBubble(Static):
@@ -115,17 +115,17 @@ class NanoAgentIM(App):
         yield VerticalScroll(id="chat")
         yield Static("", id="status")
         yield Input(
-            placeholder="Type a message, Enter to send. 'quit' to exit.", id="input"
+            placeholder="Type a message, Enter to send. '/quit' to exit.", id="input"
         )
 
     def on_mount(self) -> None:
-        message_bus.register("mainAgent", "leader")
+        message_bus.register("nanoAgent", "leader")
         subscribe(self._on_event_from_agents)
 
-        self._run_thread = threading.Thread(target=mainAgent.run_loop, daemon=True)
+        self._run_thread = threading.Thread(target=nanoAgent.run_loop, daemon=True)
         self._run_thread.start()
 
-        self._add_system_message("nanoAgent IM started. mainAgent is online.")
+        self._add_system_message("nanoAgent IM started. nanoAgent is online.")
         self._refresh_status()
         self.query_one("#input", Input).focus()
 
@@ -136,21 +136,80 @@ class NanoAgentIM(App):
         if not text:
             return
 
+        if text.startswith("/"):
+            if self._handle_slash_command(text):
+                self._refresh_status()
+                return
+            self._add_ops_message(
+                f"{SYSTEM_TAG} Unknown command: {text}. Try /help for available commands."
+            )
+            self._refresh_status()
+            return
+
         if text.lower() in {"quit", "exit", "/quit"}:
             self.exit()
             return
 
         self._add_user_message(text)
-        qn = message_bus.pending_count("mainAgent")
-        message_bus.send(None, to="mainAgent", content=text)
+        qn = message_bus.pending_count("nanoAgent")
+        message_bus.send(None, to="nanoAgent", content=text)
 
-        state = self.agent_states.get("mainAgent", IDLE)
+        state = self.agent_states.get("nanoAgent", IDLE)
         if state != IDLE:
             self._add_ops_message(
-                f"{SYSTEM_TAG} mainAgent is {state}, queued at position {qn + 1}"
+                f"{SYSTEM_TAG} nanoAgent is {state}, queued at position {qn + 1}"
             )
+        else:
+            self._add_ops_message(f"{SYSTEM_TAG} sent to nanoAgent")
 
         self._refresh_status()
+
+    def _handle_slash_command(self, command: str) -> bool:
+        lowered = command.lower()
+
+        if lowered in {"/help", "/h"}:
+            self._show_help()
+            return True
+
+        if lowered in {"/agents", "/members", "/status"}:
+            self._add_system_message(self._render_agents_snapshot())
+            return True
+
+        if lowered == "/clear":
+            self._clear_chat()
+            self._add_system_message("chat cleared")
+            return True
+
+        if lowered in {"/quit", "/exit"}:
+            self.exit()
+            return True
+
+        return False
+
+    def _show_help(self) -> None:
+        self._add_system_message(
+            "Commands: /help, /agents, /status, /clear, /quit. "
+            "Plain text messages are sent to nanoAgent."
+        )
+
+    def _render_agents_snapshot(self) -> str:
+        agents = message_bus.list_agents()
+        if not agents:
+            return "no agents online"
+
+        rows = []
+        for item in agents:
+            name = item["name"]
+            role = item["role"]
+            state = self.agent_states.get(name, IDLE)
+            queue_count = message_bus.pending_count(name)
+            rows.append(f"{name}({role}) state={state} queue={queue_count}")
+        return "online agents: " + " | ".join(rows)
+
+    def _clear_chat(self) -> None:
+        chat = self.query_one("#chat", VerticalScroll)
+        for child in list(chat.children):
+            child.remove()
 
     def _on_event_from_agents(self, event: Event) -> None:
         # Event callback runs on worker threads; schedule UI updates safely.
@@ -198,8 +257,10 @@ class NanoAgentIM(App):
             return
 
         if kind == "error":
+            traceback_text = data.get("traceback", "")
+            summary = traceback_text.strip().splitlines()[-1] if traceback_text else ""
             self._add_background_message(
-                name, f"{OPS_TAG} ERROR: {data.get('traceback')}"
+                name, f"{OPS_TAG} ERROR: {summary or 'unknown error'}"
             )
             return
 
@@ -279,10 +340,10 @@ class NanoAgentIM(App):
         self.query_one("#status", Static).update(status)
 
 
-# ── create mainAgent ──
+# ── create nanoAgent ──
 
-mainAgent = create_agent(
-    name="mainAgent",
+nanoAgent = create_agent(
+    name="nanoAgent",
     role="leader",
     profile="main",
     extra_registry={

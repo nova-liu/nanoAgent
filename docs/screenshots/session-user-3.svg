@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#0b1220"/>
+  <rect x="30" y="30" width="1140" height="640" rx="14" fill="#111827" stroke="#334155"/>
+  <rect x="30" y="30" width="1140" height="48" rx="14" fill="#1f2937"/>
+  <text x="56" y="62" fill="#93c5fd" font-family="Menlo, Monaco, Consolas, monospace" font-size="22">nanoAgent IM - specialist routing</text>
+
+  <text x="60" y="130" fill="#f8fafc" font-family="Menlo, Monaco, Consolas, monospace" font-size="22">[A] nanoAgent(leader) acting  [I] secReviewer(security)</text>
+
+  <rect x="60" y="170" width="640" height="56" rx="10" fill="#183026"/>
+  <text x="80" y="205" fill="#dcfce7" font-family="Menlo, Monaco, Consolas, monospace" font-size="20">user: Create a bash security audit report</text>
+
+  <rect x="60" y="245" width="950" height="120" rx="10" fill="#1b1f26" stroke="#475569"/>
+  <text x="80" y="280" fill="#cbd5e1" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">nanoAgent: [OPS] -&gt; spawn {"name":"secReviewer","role":"security"}</text>
+  <text x="80" y="310" fill="#cbd5e1" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">nanoAgent: [OPS] -&gt; send_message {"to":"secReviewer","content":"..."}</text>
+  <text x="80" y="340" fill="#cbd5e1" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">secReviewer: [OPS] -&gt; get_skill {"name":"code-review"}</text>
+
+  <rect x="60" y="382" width="1040" height="160" rx="10" fill="#153327" stroke="#4ade80"/>
+  <text x="80" y="417" fill="#dcfce7" font-family="Menlo, Monaco, Consolas, monospace" font-size="20">nanoAgent: Security audit complete, 4 risk classes identified with fixes.</text>
+  <text x="80" y="450" fill="#bbf7d0" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">1) Command-concatenation injection  2) Missing allowlist</text>
+  <text x="80" y="480" fill="#bbf7d0" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">3) No path-boundary validation  4) Audit logs lack granularity</text>
+  <text x="80" y="510" fill="#bbf7d0" font-family="Menlo, Monaco, Consolas, monospace" font-size="18">Next step: generate an automated patch.</text>
+
+  <rect x="60" y="586" width="1080" height="52" rx="10" fill="#0f172a" stroke="#334155"/>
+  <text x="80" y="620" fill="#94a3b8" font-family="Menlo, Monaco, Consolas, monospace" font-size="20">> Use /status to inspect agent roles and queue lengths</text>
+</svg>

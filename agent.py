@@ -15,7 +15,7 @@ class Agent:
         max_tokens=8000,
         tools: list[Tool] = None,
         client=client,
-        name="mainAgent",
+        name="nanoAgent",
         max_context_tokens=1600,
         role="leader",
         system_template="Your name is {name} and your role is {role}.",
@@ -81,7 +81,22 @@ class Agent:
         self._set_state(ACTING)
         for tc in tool_calls_list:
             tool_name = tc["function"]["name"]
-            args = json.loads(tc["function"]["arguments"])
+            raw_arguments = tc["function"].get("arguments", "")
+            try:
+                args = json.loads(raw_arguments) if raw_arguments else {}
+            except json.JSONDecodeError as e:
+                error_result = (
+                    f"Error using tool '{tool_name}': invalid JSON arguments ({e})"
+                )
+                emit("tool_end", self.context.name, tool=tool_name, result=error_result)
+                self.context.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": error_result,
+                    }
+                )
+                continue
 
             args_brief = json.dumps(args, ensure_ascii=False)
             if len(args_brief) > 120:
