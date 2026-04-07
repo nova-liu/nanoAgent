@@ -21,21 +21,24 @@ class MessageBus:
     def send(
         self,
         agent_context: AgentContext,
-        sender: str,
         to: str,
         content: str,
         msg_type: str = "message",
-        extra: dict = None,
     ) -> str:
         if msg_type not in VALID_MSG_TYPES:
             return f"Error: Invalid type '{msg_type}'. Valid: {VALID_MSG_TYPES}"
 
-        # Block sending to offline agents (except "user" target which is special)
+        # Block sending to offline agents (except "user" / "mainAgent" from CLI)
         if to != "user" and not is_online(to):
             return (
                 f"Error: '{to}' is offline. "
                 f"Use `spawn` to start '{to}' first, or pick another online agent."
             )
+
+        # Auto-derive sender from context
+        sender = "user"
+        if agent_context and hasattr(agent_context, "name"):
+            sender = agent_context.name
 
         msg = {
             "type": msg_type,
@@ -43,8 +46,6 @@ class MessageBus:
             "content": content,
             "timestamp": time.time(),
         }
-        if extra:
-            msg.update(extra)
         inbox_path = self.dir / f"{to}.jsonl"
         with open(inbox_path, "a") as f:
             f.write(json.dumps(msg) + "\n")
@@ -73,23 +74,14 @@ send_message_tool = {
     "type": "function",
     "function": {
         "name": "send_message",
-        "description": "Send a message to another teammate.",
+        "description": "Send a message to an online agent. Sender is auto-filled from your identity. Will fail if recipient is offline — use spawn first.",
         "parameters": {
             "type": "object",
             "properties": {
-                "sender": {"type": "string", "description": "Sender teammate name"},
-                "to": {"type": "string", "description": "Recipient teammate name"},
+                "to": {"type": "string", "description": "Recipient agent name"},
                 "content": {"type": "string", "description": "Message content"},
-                "msg_type": {
-                    "type": "string",
-                    "description": f"Type of message, one of {VALID_MSG_TYPES}",
-                },
-                "extra": {
-                    "type": "object",
-                    "description": "Optional extra fields for the message",
-                },
             },
-            "required": ["sender", "to", "content"],
+            "required": ["to", "content"],
         },
     },
 }

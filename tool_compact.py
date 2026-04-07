@@ -1,7 +1,7 @@
 from tool import Tool
 from config import TRANSCRIPT_DIR
 import time, json
-from agent import AgentContext
+from agent_context import AgentContext
 
 NAME = "compact"
 compact_tool = {

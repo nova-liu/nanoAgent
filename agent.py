@@ -65,20 +65,50 @@ class Agent:
     def one_task(self):
         while True:
             content, _, role, tool_calls_list = self._stream_chat()
-            # append the assistant message to the conversation, including any tool calls or refusals
+            # Append the assistant message — must include tool_calls when present
+            # so the API sees them paired with subsequent tool-result messages.
+            assistant_msg = {"role": role or "assistant"}
             if content:
-                self.context.messages.append({"role": role, "content": content})
+                assistant_msg["content"] = content
+            if tool_calls_list:
+                assistant_msg["tool_calls"] = tool_calls_list
+            if content or tool_calls_list:
+                self.context.messages.append(assistant_msg)
 
             if not tool_calls_list:
                 break
 
-            # need to run the tool calls and append the results to the conversation before the next turn
             self.handle_tool_calls(tool_calls_list)
 
     def handle_tool_calls(self, tool_calls_list):
         for tc in tool_calls_list:
+            tool_name = tc["function"]["name"]
             args = json.loads(tc["function"]["arguments"])
-            result = self._use_tool(tc["function"]["name"], args)
+
+            # Show tool usage in terminal
+            with print_lock:
+                args_brief = json.dumps(args, ensure_ascii=False)
+                if len(args_brief) > 120:
+                    args_brief = args_brief[:117] + "..."
+                sys.stdout.write(
+                    f"  {self.name_color}↳ {tool_name}{self.reset_color}"
+                    f" \033[2m{args_brief}\033[0m\n"
+                )
+                sys.stdout.flush()
+
+            result = self._use_tool(tool_name, args)
+
+            # Show result snippet
+            with print_lock:
+                result_brief = result.replace("\n", " ")
+                if len(result_brief) > 120:
+                    result_brief = result_brief[:117] + "..."
+                sys.stdout.write(
+                    f"  {self.name_color}  ← {self.reset_color}"
+                    f"\033[2m{result_brief}\033[0m\n"
+                )
+                sys.stdout.flush()
+
             self.context.messages.append(
                 {
                     "role": "tool",

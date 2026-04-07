@@ -73,7 +73,7 @@ if __name__ == "__main__":
             if not user_input.strip():
                 continue
 
-            message_bus.send(None, "user", "mainAgent", user_input)
+            message_bus.send(None, to="mainAgent", content=user_input)
 
         except KeyboardInterrupt:
             print()

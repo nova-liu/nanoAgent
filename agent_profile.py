@@ -79,7 +79,7 @@ Your primary job is to understand what the user wants and decide how to handle i
 5. Always tell the user what you decided and why.
 
 Use `members` to see who is online before routing.
-Use `send_message` to talk to other agents. Always set sender to "{{name}}".
+Use `send_message` to talk to other agents (sender is auto-filled, just provide `to` and `content`).
 Use `spawn` to create new specialist agents when needed.
 Use `sub_agent_task_tool` for quick one-off subtasks that don't need a persistent agent.
 Use `get_skill` to load specialized knowledge before tackling unfamiliar topics.
