@@ -34,7 +34,7 @@ class Agent:
         self.agent_colors = [
             "\033[96m",  # 青色
             "\033[95m",  # 洋红色
-        ]        
+        ]
         self.tools = tools
         self.logger = AgentLogger(name)
 
@@ -122,7 +122,9 @@ class Agent:
         role = ""
         tool_calls_dict = {}
         with print_lock:
-            sys.stdout.write(f"{self.agent_colors[0]}[{self.context.name}]: {self.agent_colors[1]}")
+            sys.stdout.write(
+                f"{self.agent_colors[0]}[{self.context.name}]: {self.agent_colors[1]}"
+            )
             sys.stdout.flush()
             for chunk in stream:
                 choice = chunk.choices[0]
