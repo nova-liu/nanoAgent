@@ -12,7 +12,7 @@ This version focuses on three goals:
 
 ## Core Features
 
-- Textual-based terminal IM interface
+- Simple terminal REPL with stdout logging
 - In-memory message bus (thread-safe Queue)
 - Agent state visibility (idle/thinking/acting)
 - Pluggable tool registry with profile-based assembly
@@ -51,8 +51,8 @@ nanoAgent chooses one of the following strategies:
 ### Built-in Commands
 
 - /help: Show command help
-- /agents or /status: Show online agents, roles, states, and queue lengths
-- /clear: Clear the chat area
+- /agents or /status: Show online agents, roles, and queue lengths
+- /clear: Clear the terminal screen
 - /quit: Exit the app
 
 ## Architecture Diagram
@@ -60,7 +60,7 @@ nanoAgent chooses one of the following strategies:
 ```mermaid
 flowchart LR
     U[User]
-    UI[Textual UI\ncmd/main.py]
+    CLI[Terminal REPL\ncmd/main.py]
     N[nanoAgent\nleader thread]
     MB[MessageBus\nin-memory queues]
     SP[spawned Agents\nreviewer/devops/...]
@@ -70,8 +70,8 @@ flowchart LR
     LOG[agent_log.json\n.transcripts/*]
     SK[skills/**/SKILL.md]
 
-    U --> UI
-    UI -->|send text| MB
+    U --> CLI
+    CLI -->|send text| MB
     MB -->|recv| N
     N <--> LLM
     N <--> TOOLS
@@ -79,17 +79,19 @@ flowchart LR
     N -->|spawn| SP
     N -->|delegate once| D
     SP -->|send_message| MB
+    N -->|print logs| CLI
+    SP -->|print logs| CLI
     N --> LOG
 ```
 
 ## Runtime Flow
 
-1. The user enters a message in the UI.
-2. The UI sends the message to nanoAgent via the message bus queue.
+1. The user enters a message in the terminal.
+2. The REPL sends the message to nanoAgent via the message bus queue.
 3. nanoAgent reads it from the queue and appends it to context.
 4. nanoAgent starts a streaming LLM call; if tool calls are returned, tools are executed and tool results are fed back.
 5. The loop continues until no more tool calls are returned.
-6. The UI renders state changes, tool activity, and replies in real time.
+6. Agents print tool activity, state changes, and replies directly to stdout.
 
 ## Project Structure
 
@@ -98,8 +100,7 @@ flowchart LR
 - agent_factory.py: Unified agent construction
 - agent_profile.py: System templates and profile-based tool assembly
 - agent_logger.py: LLM step logging
-- cmd/main.py: Textual UI entry point
-- events.py: Lightweight event bus
+- cmd/main.py: Terminal REPL entry point
 - tool.py: Tool abstraction
 - tool\_\*.py: Tool implementations
 - skills/: Skill directory

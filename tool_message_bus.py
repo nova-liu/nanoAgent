@@ -29,12 +29,6 @@ class MessageBus:
                 self._queues[name] = Queue()
             self._roles[name] = role
 
-    def unregister(self, name: str):
-        """Mark *name* as offline."""
-        with self._lock:
-            self._queues.pop(name, None)
-            self._roles.pop(name, None)
-
     def is_online(self, name: str) -> bool:
         with self._lock:
             return name in self._roles
@@ -107,11 +101,6 @@ class MessageBus:
         if not messages:
             return ""
         return json.dumps(messages, ensure_ascii=False)
-
-    def pending_count(self, name: str) -> int:
-        with self._lock:
-            q = self._queues.get(name)
-        return q.qsize() if q else 0
 
 
 # Singleton

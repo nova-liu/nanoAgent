@@ -1,11 +1,20 @@
 from client import client
-import time, json, threading, traceback
+import json, threading, traceback
 from agent_logger import AgentLogger, step
 from tool_message_bus import message_bus
 from tool import Tool
 from agent_context import AgentContext
-from events import emit, IDLE, THINKING, ACTING
-import sys
+
+IDLE = "idle"
+THINKING = "thinking"
+ACTING = "acting"
+
+_print_lock = threading.Lock()
+
+
+def console_log(agent_name: str, message: str) -> None:
+    with _print_lock:
+        print(f"{agent_name}: {message}", flush=True)
 
 
 class Agent:
@@ -35,7 +44,8 @@ class Agent:
 
     def _set_state(self, state: str):
         self._state = state
-        emit("state_changed", self.context.name, state=state)
+        if state != IDLE:
+            console_log(self.context.name, f"[{state}]")
 
     def run_loop(self):
         message_bus.register(self.context.name, self.context.role)
@@ -54,7 +64,8 @@ class Agent:
                 self.one_task()
             except Exception:
                 tb = traceback.format_exc()
-                emit("error", self.context.name, traceback=tb)
+                summary = tb.strip().splitlines()[-1] if tb else "unknown error"
+                console_log(self.context.name, f"ERROR: {summary}")
             finally:
                 self._set_state(IDLE)
 
@@ -88,7 +99,7 @@ class Agent:
                 error_result = (
                     f"Error using tool '{tool_name}': invalid JSON arguments ({e})"
                 )
-                emit("tool_end", self.context.name, tool=tool_name, result=error_result)
+                console_log(self.context.name, error_result)
                 self.context.messages.append(
                     {
                         "role": "tool",
@@ -101,14 +112,14 @@ class Agent:
             args_brief = json.dumps(args, ensure_ascii=False)
             if len(args_brief) > 120:
                 args_brief = args_brief[:117] + "..."
-            emit("tool_start", self.context.name, tool=tool_name, args=args_brief)
+            console_log(self.context.name, f"-> {tool_name} {args_brief}")
 
             result = self._use_tool(tool_name, args)
 
             result_brief = result.replace("\n", " ")
             if len(result_brief) > 120:
                 result_brief = result_brief[:117] + "..."
-            emit("tool_end", self.context.name, tool=tool_name, result=result_brief)
+            console_log(self.context.name, f"<- {result_brief}")
 
             self.context.messages.append(
                 {
@@ -165,19 +176,15 @@ class Agent:
         role = ""
         tool_calls_dict = {}
 
-        emit("stream_start", self.context.name)
-
         for chunk in stream:
             choice = chunk.choices[0]
             delta = choice.delta
 
             if delta.content:
                 content += delta.content
-                emit("stream_delta", self.context.name, text=delta.content)
 
             if delta.refusal:
                 refusal += delta.refusal
-                emit("stream_delta", self.context.name, text=delta.refusal)
 
             if delta.role and not role:
                 role += delta.role
@@ -202,7 +209,10 @@ class Agent:
             if choice.finish_reason:
                 break
 
-        emit("stream_end", self.context.name, content=content)
+        if content.strip():
+            console_log(self.context.name, content)
+        elif refusal.strip():
+            console_log(self.context.name, refusal)
 
         tool_calls_list = build_tool_calls(tool_calls_dict)
         self._chat_log(content, refusal, role, tool_calls_list)
