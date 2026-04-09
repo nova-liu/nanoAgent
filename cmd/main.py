@@ -9,7 +9,6 @@ MAIN_AGENT_NAME = "nanoAgent"
 
 def main() -> None:
     message_bus.register(MAIN_AGENT_NAME, "leader")
-
     run_thread = threading.Thread(target=nanoAgent.run_loop, daemon=True)
     run_thread.start()
 
@@ -27,8 +26,8 @@ def main() -> None:
         result = message_bus.send(None, to=MAIN_AGENT_NAME, content=text)
 
 
-# ── create nanoAgent ──
 
+# ── create nanoAgent ──
 nanoAgent = create_agent(
     name="nanoAgent",
     role="leader",
