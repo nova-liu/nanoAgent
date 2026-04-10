@@ -1,6 +1,6 @@
 # nanoAgent
 
-![logo](docs/screenshots/logo.svg)
+![logo](docs/logo.svg)
 
 A multi-agent terminal collaboration experiment built on OpenAI-compatible Chat Completions.
 
@@ -122,22 +122,6 @@ flowchart LR
 
 - agent_log.json: latest structured run log
 - .transcripts/transcript\_\*.jsonl: compact-generated transcript archives
-
-## Screenshots
-
-Three SVG terminal screenshots are included:
-
-### 1) Single user request
-
-![single-user](docs/screenshots/session-user-1.svg)
-
-### 2) Multiple queued requests and status
-
-![queue-and-status](docs/screenshots/session-user-2.svg)
-
-### 3) Leader dispatching a specialist
-
-![specialist-routing](docs/screenshots/session-user-3.svg)
 
 ## Known Limitations
 

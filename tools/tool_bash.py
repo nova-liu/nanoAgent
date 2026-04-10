@@ -1,6 +1,6 @@
 import os
 import subprocess
-from tool import Tool
+from tools.tool import Tool
 from agent_context import AgentContext
 
 NAME = "bash"

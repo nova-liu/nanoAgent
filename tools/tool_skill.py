@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 from config import SKILL_DIR
-from tool import Tool
+from tools.tool import Tool
 from agent_context import AgentContext
 
 

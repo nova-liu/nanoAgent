@@ -1,4 +1,4 @@
-from tool import Tool
+from tools.tool import Tool
 from config import TRANSCRIPT_DIR
 import time, json
 from agent_context import AgentContext
@@ -23,7 +23,6 @@ def compact(agent_context: AgentContext) -> str:
     with open(transcript_path, "w") as f:
         for msg in agent_context.messages:
             f.write(json.dumps(msg, default=str) + "\n")
-    print(f"[transcript saved: {transcript_path}]")
     # Ask LLM to summarize
     conversation_text = json.dumps(agent_context.messages, default=str)[:80000]
     messages = [
@@ -34,6 +33,7 @@ def compact(agent_context: AgentContext) -> str:
             "Be concise but preserve critical details.\n\n" + conversation_text,
         }
     ]
+
     response = agent_context.client.chat.completions.create(
         model=agent_context.model,
         messages=messages,
@@ -44,7 +44,7 @@ def compact(agent_context: AgentContext) -> str:
     summary = response.choices[0].message.content
     # Replace all messages with compressed summary
     agent_context.messages = [
-        {"role": "system", "content": agent_context.messages[0]["content"]},
+        agent_context.messages[0],  # system prompt
         {
             "role": "user",
             "content": f"[Conversation compressed. Transcript: {transcript_path}]\n\n{summary}",

@@ -10,7 +10,7 @@ import json
 import threading
 import time
 from queue import Queue, Empty
-from tool import Tool
+from tools.tool import Tool
 from agent_context import AgentContext
 
 
@@ -21,7 +21,6 @@ class MessageBus:
         self._lock = threading.Lock()
 
     # ── registration (online / offline) ──
-
     def register(self, name: str, role: str = "unknown"):
         """Mark *name* as online and create its inbox queue."""
         with self._lock:
@@ -33,7 +32,7 @@ class MessageBus:
         with self._lock:
             return name in self._roles
 
-    def list_agents(self) -> list[dict]:
+    def list_agents(self, agent_context: AgentContext | None = None) -> list[dict]:
         """Return every registered agent with its role."""
         with self._lock:
             return [
@@ -106,9 +105,7 @@ class MessageBus:
 # Singleton
 message_bus = MessageBus()
 
-
 # ── Tool definitions ──
-
 send_message_tool = {
     "type": "function",
     "function": {
@@ -130,4 +127,22 @@ send_message_tool = {
 
 send_message_tool_instance = Tool(
     name="send_message", content=send_message_tool, function=message_bus.send
+)
+
+NAME = "list_agents"
+members_tool = {
+    "type": "function",
+    "function": {
+        "name": NAME,
+        "description": "List all ONLINE teammates with their roles. Only shows agents that are currently running and reachable.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+        "required": [],
+    },
+}
+
+list_agents_tool_instance = Tool(
+    name=NAME, content=members_tool, function=message_bus.list_agents
 )

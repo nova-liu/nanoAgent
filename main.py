@@ -1,14 +1,13 @@
-from tool_sub_agent_task import sub_agent_task_tool_instance
-from tool_spawn import spawn_tool_instance
-from tool_message_bus import message_bus
+from tools.tool_message_bus import message_bus
 from agent_factory import create_agent
 import threading
 
 MAIN_AGENT_NAME = "nanoAgent"
+MAIN_AGENT_ROLE = "leader"
 
 
 def main() -> None:
-    message_bus.register(MAIN_AGENT_NAME, "leader")
+    message_bus.register(MAIN_AGENT_NAME, MAIN_AGENT_ROLE)
     run_thread = threading.Thread(target=nanoAgent.run_loop, daemon=True)
     run_thread.start()
 
@@ -26,16 +25,11 @@ def main() -> None:
         result = message_bus.send(None, to=MAIN_AGENT_NAME, content=text)
 
 
-
 # ── create nanoAgent ──
 nanoAgent = create_agent(
-    name="nanoAgent",
-    role="leader",
+    name=MAIN_AGENT_NAME,
+    role=MAIN_AGENT_ROLE,
     profile="main",
-    extra_registry={
-        "sub_agent_task_tool": sub_agent_task_tool_instance,
-        "spawn": spawn_tool_instance,
-    },
 )
 
 

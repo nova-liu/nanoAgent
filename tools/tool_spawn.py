@@ -1,9 +1,7 @@
-from tool import Tool
+from tools.tool import Tool
 import threading
-from tool_sub_agent_task import sub_agent_task_tool_instance
 from agent_context import AgentContext
-from agent_factory import create_agent
-from tool_message_bus import message_bus
+from tools.tool_message_bus import message_bus
 
 NAME = "spawn"
 
@@ -25,6 +23,9 @@ spawn_tool = {
 
 
 def spawn(agent_context: AgentContext, name: str, role: str) -> str:
+    # Lazy import to avoid circular import via agent_profile/tool registry.
+    from agent_factory import create_agent
+
     if message_bus.is_online(name):
         return f"Error: '{name}' is already online"
 
@@ -35,9 +36,6 @@ def spawn(agent_context: AgentContext, name: str, role: str) -> str:
         name=name,
         role=role,
         profile="spawned",
-        extra_registry={
-            "sub_agent_task_tool": sub_agent_task_tool_instance,
-        },
     )
 
     thread = threading.Thread(

@@ -1,12 +1,7 @@
-from tool import Tool
+from tools.tool import Tool
 from agent_context import AgentContext
-from agent_factory import create_agent
-import threading
 
 NAME = "sub_agent_task_tool"
-
-_sub_counter_lock = threading.Lock()
-_sub_counters: dict[str, int] = {}
 
 sub_agent_task_tool = {
     "type": "function",
@@ -31,19 +26,18 @@ sub_agent_task_tool = {
 }
 
 
-def _next_sub_name(parent: str) -> str:
-    with _sub_counter_lock:
-        n = _sub_counters.get(parent, 0) + 1
-        _sub_counters[parent] = n
-    return f"{parent}/sub_{n}"
-
-
 def sub_agent_task(agent_context: AgentContext, prompt: str) -> str:
-    parent_name = agent_context.name if agent_context else "unknown"
-    sub_name = _next_sub_name(parent_name)
+    # Lazy import to avoid circular import:
+    # agent_factory -> agent_profile -> this module -> agent_factory
+    from agent_factory import create_agent
+
+    parent_name = (
+        agent_context.name if agent_context and agent_context.name else "agent"
+    )
+    n = len(agent_context.messages) if agent_context else 0
 
     subAgent = create_agent(
-        name=sub_name,
+        name=f"{parent_name}/sub_{n}",
         role=f"sub-agent of {parent_name}",
         profile="delegated",
     )

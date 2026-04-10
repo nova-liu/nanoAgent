@@ -8,13 +8,12 @@ def create_agent(
     name: str,
     role: str,
     profile: str,
-    extra_registry: dict | None = None,
     model: str = "doubao-seed-2-0-mini-260215",
     max_tokens: int = 8000,
     max_context_tokens: int = 1600,
 ):
     return Agent(
-        tools=build_tool_box(profile, extra_registry=extra_registry),
+        tools=build_tool_box(profile),
         client=client,
         name=name,
         role=role,
