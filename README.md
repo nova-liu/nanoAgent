@@ -24,7 +24,7 @@ This version focuses on three goals:
 ### Requirements
 
 - Python 3.11+
-- Environment variable ARK_API_KEY
+- Environment variable OPENAI_API_KEY (for Volcengine API)
 
 ### Install and Run
 
@@ -32,11 +32,11 @@ This version focuses on three goals:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-export ARK_API_KEY="your_api_key"
-python cmd/main.py
+export OPENAI_API_KEY="your_api_key"
+python main.py
 ```
 
-Exit with quit, exit, or /quit.
+Exit with quit, exit, or Ctrl+C.
 
 ## Usage
 
@@ -50,24 +50,22 @@ nanoAgent chooses one of the following strategies:
 
 ### Built-in Commands
 
-- /help: Show command help
-- /agents or /status: Show online agents, roles, and queue lengths
-- /clear: Clear the terminal screen
-- /quit: Exit the app
+- quit/exit: Exit the app
+- Ctrl+C: Exit the app
 
 ## Architecture Diagram
 
 ```mermaid
 flowchart LR
     U[User]
-    CLI[Terminal REPL\ncmd/main.py]
+    CLI[Terminal REPL\nmain.py]
     N[nanoAgent\nleader thread]
     MB[MessageBus\nin-memory queues]
-    SP[spawned Agents\nreviewer/devops/...]
+    SP[spawned Agents\nspecialists]
     D[sub_agent_task_tool\none-off delegated agent]
     LLM[OpenAI Compatible\nChat Completions]
-    TOOLS[Tools\nbash/read_file/write_file/edit_file/members/send_message/compact/get_skill]
-    LOG[agent_log.json\n.transcripts/*]
+    TOOLS[Tools\nbash/read_file/write_file/edit_file/list_agents/send_message/compact/get_skill/sub_agent_task_tool/spawn]
+    LOG[.transcripts/*\nstructured logs]
     SK[skills/**/SKILL.md]
 
     U --> CLI
@@ -95,33 +93,47 @@ flowchart LR
 
 ## Project Structure
 
+- main.py: Terminal REPL entry point
 - agent.py: Agent loop and tool-call execution
 - agent_context.py: Context and model parameter container
 - agent_factory.py: Unified agent construction
 - agent_profile.py: System templates and profile-based tool assembly
-- agent_logger.py: LLM step logging
-- cmd/main.py: Terminal REPL entry point
-- tool.py: Tool abstraction
-- tool\_\*.py: Tool implementations
+- agent_logger.py: LLM step logging (not currently used)
+- client.py: OpenAI client setup
+- config.py: Configuration and environment variables
+- tools/: Tool implementations
+  - tool.py: Tool abstraction
+  - tool_bash.py: Bash command execution
+  - tool_read_file.py: File reading
+  - tool_write_file.py: File writing
+  - tool_edit_file.py: File editing
+  - tool_list_agents.py: List online agents
+  - tool_send_message.py: Send messages between agents
+  - tool_compact.py: Conversation compaction
+  - tool_skill.py: Skill loading
+  - tool_sub_agent_task.py: One-off delegated tasks
+  - tool_spawn.py: Spawn new agents
+  - tool_message_bus.py: Message bus implementation
 - skills/: Skill directory
+  - code-review/SKILL.md: Code review skill
 
 ## Tools
 
-- bash
-- read_file
-- write_file
-- edit_file
-- members
-- send_message
-- spawn
-- sub_agent_task_tool
-- get_skill
-- compact
+- bash: Execute shell commands
+- read_file: Read file contents
+- write_file: Write to files
+- edit_file: Edit existing files
+- list_agents: List online agents
+- send_message: Send messages to other agents
+- spawn: Spawn new specialist agents
+- sub_agent_task_tool: Delegate one-off tasks
+- get_skill: Load specialized knowledge
+- compact: Compact conversation history
 
 ## Runtime Artifacts
 
-- agent_log.json: latest structured run log
-- .transcripts/transcript\_\*.jsonl: compact-generated transcript archives
+- .transcripts/: Structured log archives
+- .env: Environment variables (optional)
 
 ## Known Limitations
 
