@@ -2,7 +2,7 @@
 
 ![logo](docs/logo.svg)
 
-the minimal agent framework for research and experimentation.
+The minimal agent framework for research and experimentation.
 
 This version focuses on three goals:
 
