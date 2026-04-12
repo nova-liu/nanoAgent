@@ -2,7 +2,7 @@
 
 ![logo](docs/logo.svg)
 
-A multi-agent terminal collaboration experiment built on OpenAI-compatible Chat Completions.
+the minimal agent framework for research and experimentation.
 
 This version focuses on three goals:
 
