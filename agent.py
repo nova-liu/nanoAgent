@@ -1,5 +1,6 @@
 from client import client
 import json, threading, traceback
+from queue import Queue
 from tools.tool_message_bus import message_bus
 from tools.tool import Tool
 from agent_context import AgentContext
@@ -41,6 +42,7 @@ class Agent:
         self.model = model
         self.max_tokens = max_tokens
         self.max_context_tokens = max_context_tokens
+        self.response_queue: Queue[str] = Queue()
 
     def _set_state(self, state: str):
         self._state = state
@@ -72,7 +74,8 @@ class Agent:
             self.context.messages.append(assistant_msg)
 
             if not msg.tool_calls:
-                print(self.context.messages[-1])
+                reply = msg.content or ""
+                self.response_queue.put(reply)
                 break
 
             self.handle_tool_calls(msg.tool_calls)
